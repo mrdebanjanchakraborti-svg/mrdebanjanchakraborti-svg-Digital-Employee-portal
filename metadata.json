@@ -1,0 +1,9 @@
+{
+  "name": "LMP - Lead Management Platform",
+  "description": "A scalable Lead Management Platform featuring AI-driven lead scoring, CRM Kanban board, multi-channel capture, and advanced sales analytics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
