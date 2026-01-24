@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { 
   Radio, Plus, Search, Filter, Copy, CheckCircle, Trash2, 
   Settings2, Zap, ShieldCheck, Globe, Loader2, Info, 
   ArrowRight, CreditCard, Clock, Activity, Target, Landmark, X,
-  Terminal, ShieldAlert, Pause, Play, MoreVertical
+  Terminal, ShieldAlert, Pause, Play, MoreVertical, Shield
 } from 'lucide-react';
 import { TriggerType, TriggerStatus, PlanTier, Trigger } from '../types';
 
@@ -17,6 +18,18 @@ const PLAN_LIMITS: Record<PlanTier, number> = {
 
 const MOCK_TRIGGERS: Trigger[] = [
   {
+    id: 'tr_rzp_revenue',
+    workspace_id: 'ws_123',
+    name: 'Razorpay Revenue Pulse',
+    type: TriggerType.CUSTOM_WEBHOOK,
+    status: TriggerStatus.ACTIVE,
+    webhook_url: 'https://digitalemployee.me/api/webhook',
+    secret: 'whsk_rzp_7d9f3b1a2e',
+    event_type: 'payment.captured, payment.failed',
+    usage_count: 42,
+    created_at: '2024-11-21T08:00:00Z'
+  },
+  {
     id: 'tr_1',
     workspace_id: 'ws_123',
     name: 'IndiaMART Lead Sync',
@@ -27,18 +40,6 @@ const MOCK_TRIGGERS: Trigger[] = [
     event_type: 'new_lead',
     usage_count: 1240,
     created_at: '2024-11-10T10:00:00Z'
-  },
-  {
-    id: 'tr_2',
-    workspace_id: 'ws_123',
-    name: 'Website Pricing Modal',
-    type: TriggerType.CUSTOM_WEBHOOK,
-    status: TriggerStatus.PAUSED,
-    webhook_url: 'https://digitalemployee.me/ingest/web-pricing-whsk',
-    secret: 'sig_x7y2z1',
-    event_type: 'intent_signal',
-    usage_count: 85,
-    created_at: '2024-11-12T15:30:00Z'
   }
 ];
 
@@ -57,13 +58,13 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
 
   const handleCreateTrigger = () => {
     if (userPlan === PlanTier.FREE) {
-       alert("Scale Blocked: Incoming triggers are restricted in the Free tier. Upgrade to Starter or higher to authorize workforce interfaces.");
+       alert("Scale Blocked: Incoming triggers are restricted in the Free tier.");
        setIsModalOpen(false);
        return;
     }
 
     if (usage >= limit) {
-      alert(`Workforce Scale Blocked: You have reached the ${limit}-trigger limit for your ${userPlan.toUpperCase()} plan. Upgrade to Growth or Pro to authorize more incoming signals.`);
+      alert(`Limit Reached: Upgrade to authorize more triggers.`);
       setIsModalOpen(false);
       return;
     }
@@ -74,7 +75,7 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
       name: newTrigger.name,
       type: newTrigger.type,
       status: TriggerStatus.ACTIVE,
-      webhook_url: `https://digitalemployee.me/ingest/${newTrigger.name.toLowerCase().replace(/\s+/g, '-')}-${Math.floor(Math.random()*1000)}`,
+      webhook_url: `https://digitalemployee.me/ingest/${newTrigger.name.toLowerCase().replace(/\s+/g, '-')}`,
       secret: 'sig_' + Math.random().toString(36).substr(2, 6),
       event_type: 'custom_pulse',
       usage_count: 0,
@@ -96,7 +97,7 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
     setIsTesting(id);
     setTimeout(() => {
       setIsTesting(null);
-      alert("Pulse Handshake Success: Outbound n8n signal dispatched. Credits deducted: 1.");
+      alert("Pulse Handshake Success: Captured signal verified.");
     }, 2000);
   };
 
@@ -122,51 +123,35 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
         </div>
       </header>
 
-      {/* FREE TIER BLOCKER BANNER */}
-      {userPlan === PlanTier.FREE && (
-        <div className="bg-indigo-600 rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-10">
-           <div className="relative z-10 flex items-center gap-8">
-              <div className="w-20 h-20 bg-white/10 rounded-[2.5rem] border border-white/20 flex items-center justify-center backdrop-blur-md">
-                 <ShieldAlert size={40} className="text-indigo-200" />
-              </div>
-              <div className="space-y-2">
-                 <h3 className="text-3xl font-black uppercase tracking-tight">Upgrade to Authorize Triggers</h3>
-                 <p className="text-indigo-100 text-sm font-medium italic opacity-80">Autonomous signal ingestion is restricted in the **Free Pulse** tier.</p>
-              </div>
-           </div>
-           <button className="relative z-10 px-12 py-5 bg-white text-indigo-600 rounded-3xl font-black text-sm uppercase tracking-[0.2em] shadow-2xl hover:brightness-110 active:scale-95 transition-all">
-              Go Starter Plan
-           </button>
-           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-[100px] -mr-48 -mt-48" />
-        </div>
-      )}
-
       {/* TRIGGER CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {triggers.map(t => (
-          <div key={t.id} className={`bg-white border border-slate-200 rounded-[3rem] p-8 shadow-sm group hover:border-indigo-600 transition-all flex flex-col justify-between min-h-[380px] relative overflow-hidden ${t.status === TriggerStatus.PAUSED ? 'opacity-70 bg-slate-50' : ''}`}>
+          <div key={t.id} className={`bg-white border border-slate-200 rounded-[3rem] p-8 shadow-sm group hover:border-indigo-600 transition-all flex flex-col justify-between min-h-[420px] relative overflow-hidden ${t.id === 'tr_rzp_revenue' ? 'ring-2 ring-indigo-500/20' : ''}`}>
              <div className="space-y-6 relative z-10">
                 <div className="flex items-center justify-between">
-                   <div className={`p-3 rounded-2xl ${t.status === TriggerStatus.ACTIVE ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
-                      <Radio size={24} />
+                   <div className={`p-3 rounded-2xl ${t.id === 'tr_rzp_revenue' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 shadow-inner'}`}>
+                      {t.id === 'tr_rzp_revenue' ? <CreditCard size={24} /> : <Radio size={24} />}
                    </div>
                    <div className="flex gap-2">
-                      <span className={`px-3 py-1 text-[9px] font-black rounded-lg border uppercase tracking-widest ${t.status === TriggerStatus.ACTIVE ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                         {t.status}
-                      </span>
+                      {t.id === 'tr_rzp_revenue' && (
+                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded-lg border border-emerald-100 uppercase tracking-tighter">Live Revenue Monitoring</span>
+                      )}
                       <button className="text-slate-400 hover:text-slate-900 p-1"><MoreVertical size={18}/></button>
                    </div>
                 </div>
 
                 <div>
                    <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-1">{t.name}</h4>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                      <Zap size={10} className="text-indigo-500" /> {t.type.replace('_', ' ')}
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-1.5 line-clamp-1">
+                      {t.event_type.split(',').map((evt, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-slate-50 border border-slate-100 rounded text-indigo-500">{evt.trim()}</span>
+                      ))}
                    </p>
                 </div>
 
                 <div className="space-y-3">
-                   <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between group/code">
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Endpoint Interface</p>
+                   <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between group/code shadow-inner">
                       <code className="text-[10px] font-mono font-bold text-slate-500 truncate w-40">{t.webhook_url}</code>
                       <button 
                          onClick={() => handleCopy(t.webhook_url, t.id)}
@@ -175,9 +160,15 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
                          {copiedId === t.id ? <CheckCircle size={14} /> : <Copy size={14} />}
                       </button>
                    </div>
-                   <div className="flex items-center gap-2 px-1">
-                      <Clock size={12} className="text-slate-300" />
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.usage_count} Signal Hits Today</span>
+                   <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                         <Shield size={12} className="text-indigo-400" />
+                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Secret: {t.secret.substring(0, 8)}***</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <Clock size={12} className="text-slate-300" />
+                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.usage_count} Hits</span>
+                      </div>
                    </div>
                 </div>
              </div>
@@ -185,14 +176,14 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
              <div className="pt-8 mt-8 border-t border-slate-50 flex gap-3 relative z-10">
                 <button 
                    onClick={() => handleTest(t.id)}
-                   disabled={!!isTesting || t.status === TriggerStatus.PAUSED}
+                   disabled={!!isTesting}
                    className="flex-1 py-3.5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 disabled:opacity-30 flex items-center justify-center gap-2 transition-all hover:bg-indigo-600"
                 >
-                   {isTesting === t.id ? <Loader2 size={14} className="animate-spin" /> : <Activity size={14} />}
-                   Test Pulse
+                   {isTesting === t.id ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                   Fire Handshake
                 </button>
                 <button className="p-3.5 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:text-indigo-600 transition-all shadow-sm">
-                   {t.status === TriggerStatus.ACTIVE ? <Pause size={18}/> : <Play size={18}/>}
+                   <Settings2 size={18}/>
                 </button>
                 <button className="p-3.5 bg-white border border-slate-200 text-slate-300 hover:text-rose-500 transition-all shadow-sm">
                    <Trash2 size={18} />
@@ -201,34 +192,21 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 opacity-40 group-hover:scale-110 transition-transform duration-700" />
           </div>
         ))}
-        
-        {userPlan !== PlanTier.FREE && usage < limit && (
-          <button 
-             onClick={() => setIsModalOpen(true)}
-             className="border-2 border-dashed border-slate-200 rounded-[3rem] p-12 flex flex-col items-center justify-center text-slate-300 hover:border-indigo-400 hover:text-indigo-600 transition-all bg-white group h-full min-h-[380px]"
-          >
-             <div className="w-20 h-20 rounded-[2.5rem] bg-slate-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                <Plus size={40} />
-             </div>
-             <p className="text-xs font-black uppercase tracking-[0.2em]">New Protocol Interface</p>
-             <p className="text-[10px] font-bold text-slate-400 uppercase mt-2">Slots Remaining: {limit - usage}</p>
-          </button>
-        )}
       </div>
 
       {/* CREATE MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
-          <div className="relative w-full max-w-xl bg-white rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.5)] overflow-hidden animate-in zoom-in-95 duration-300">
-             <header className="px-12 py-10 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <div className="relative w-full max-w-xl bg-white rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+             <header className="px-12 py-10 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
                 <div className="flex items-center gap-4">
-                   <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl">
-                      <Radio size={24} />
+                   <div className="w-14 h-14 bg-[#5143E1] rounded-2xl flex items-center justify-center text-white shadow-xl">
+                      <Radio size={28} />
                    </div>
                    <div>
-                      <h3 className="text-2xl font-black uppercase tracking-tight">Authorize Pulse Link</h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Identity Handshake Definition</p>
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-slate-900">Configure Protocol</h3>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Define your secure incoming interface</p>
                    </div>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:text-slate-900 transition-all">
@@ -236,29 +214,29 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
                 </button>
              </header>
 
-             <main className="p-12 space-y-10">
+             <main className="p-12 space-y-10 bg-[#FBFCFE]">
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Protocol Identifier (Name)</label>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Source Identifier (Name)</label>
                    <input 
                     type="text" 
                     value={newTrigger.name}
                     onChange={e => setNewTrigger({...newTrigger, name: e.target.value})}
-                    placeholder="e.g. IndiaMART CRM Sync"
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/5 text-sm font-bold shadow-inner transition-all"
+                    placeholder="e.g. Razorpay Main Webhook"
+                    className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 text-sm font-bold shadow-inner transition-all"
                    />
                 </div>
 
                 <div className="space-y-4">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Interface Interface Type</label>
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Interface Protocol</label>
                    <div className="grid grid-cols-2 gap-4">
                       {[
-                        { id: TriggerType.LEAD_INGESTION, name: 'Lead Ingestion', desc: 'CRM Entry Pulse' },
-                        { id: TriggerType.CUSTOM_WEBHOOK, name: 'Advanced Webhook', desc: 'Enterprise Bridge' }
+                        { id: TriggerType.LEAD_INGESTION, name: 'Lead Pulse', desc: 'Standard CRM Entry' },
+                        { id: TriggerType.CUSTOM_WEBHOOK, name: 'Revenue Handshake', desc: 'Financial Events' }
                       ].map(type => (
                         <button 
                           key={type.id}
                           onClick={() => setNewTrigger({...newTrigger, type: type.id as any})}
-                          className={`p-6 border rounded-[2rem] text-left transition-all relative overflow-hidden group ${newTrigger.type === type.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xl' : 'bg-white border-slate-200 hover:border-indigo-600'}`}
+                          className={`p-6 border rounded-3xl text-left transition-all relative overflow-hidden group ${newTrigger.type === type.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xl' : 'bg-white border-slate-200 hover:border-indigo-600'}`}
                         >
                            <span className="text-[11px] font-black uppercase tracking-widest block">{type.name}</span>
                            <span className="text-[8px] font-bold opacity-60 uppercase">{type.desc}</span>
@@ -267,25 +245,25 @@ const TriggerManager: React.FC<{ userPlan: PlanTier }> = ({ userPlan }) => {
                    </div>
                 </div>
 
-                <div className="p-8 bg-slate-900 rounded-[2.5rem] flex gap-6 text-white shadow-2xl relative overflow-hidden">
+                <div className="p-8 bg-[#0F111A] rounded-[2.5rem] flex gap-6 text-white shadow-2xl relative overflow-hidden">
                    <ShieldCheck size={32} className="text-indigo-400 shrink-0 mt-1" />
                    <div className="relative z-10">
-                      <h4 className="text-xs font-black uppercase tracking-widest mb-1">Consumption Security</h4>
+                      <h4 className="text-xs font-black uppercase tracking-widest mb-1">X-Signature Verified</h4>
                       <p className="text-[11px] text-slate-400 font-bold leading-relaxed italic">
-                        Signals from this trigger will consume 1 AI Credit per successful pulse recorded. Scale rules apply based on your current plan.
+                        "Your backend endpoint will require a secure secret handshake to verify Razorpay signatures, ensuring only authenticated revenue signals hit your ledger."
                       </p>
                    </div>
                 </div>
              </main>
 
-             <footer className="p-12 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Cancel</button>
+             <footer className="p-12 bg-white border-t border-slate-100 flex gap-4 shrink-0">
+                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-5 bg-slate-50 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Cancel</button>
                 <button 
                   onClick={handleCreateTrigger}
-                  disabled={!newTrigger.name || usage >= limit}
+                  disabled={!newTrigger.name}
                   className="flex-[2] py-5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 disabled:opacity-50"
                 >
-                  Authorize Pulse Handshake
+                  Authorize Pulse Interface
                 </button>
              </footer>
           </div>

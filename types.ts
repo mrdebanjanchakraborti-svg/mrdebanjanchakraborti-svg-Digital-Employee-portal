@@ -1,4 +1,6 @@
+
 export enum LeadStatus {
+  URGENT = 'urgent',
   NEW = 'new',
   CONTACTED = 'contacted',
   QUALIFIED = 'qualified',
@@ -54,6 +56,39 @@ export enum SubscriptionStatus {
   TRIALING = 'trialing',
   MANUAL_REVIEW = 'manual_review',
   PENDING_APPROVAL = 'pending_approval'
+}
+
+export enum TransactionType {
+  CREDIT = 'credit',
+  DEBIT = 'debit'
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  purpose: string;
+  payment_method?: string;
+  status: 'success' | 'failed' | 'pending';
+  created_at: string;
+  reference_id?: string;
+  gst_data?: GSTBreakdown;
+}
+
+export interface SubscriptionOrder {
+  id: string;
+  order_date: string;
+  company_name: string;
+  industry_focus: string;
+  order_id: string;
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  active_plan: PlanTier;
+  purchase_amount: number;
+  renewal_date: string;
+  renewal_amount: number;
+  status: 'active' | 'expired' | 'processing';
 }
 
 export enum CartStatus {
