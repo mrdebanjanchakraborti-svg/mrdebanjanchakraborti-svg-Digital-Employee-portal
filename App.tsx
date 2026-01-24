@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Layout, Users, Settings, Shield, Plus, MessageSquare, 
@@ -54,6 +55,7 @@ interface NavigationSection {
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isOnboardingComplete, setIsOnboardingComplete] = useState(false);
+  const [isActivated, setIsActivated] = useState(false); // New: Tracks if first plan purchase is done
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCampaignBuilderOpen, setIsCampaignBuilderOpen] = useState(false);
@@ -62,10 +64,10 @@ const App: React.FC = () => {
   
   // Real-world Subscription state
   const [subscription, setSubscription] = useState({
-    tier: PlanTier.STARTER, // Demo with STARTER to show features
-    status: SubscriptionStatus.ACTIVE,
+    tier: PlanTier.FREE, 
+    status: SubscriptionStatus.PENDING_APPROVAL,
     overdue: false, 
-    credits: 1240, 
+    credits: 0, 
     expiresAt: '2024-12-30'
   });
 
@@ -74,7 +76,10 @@ const App: React.FC = () => {
   }
 
   if (!isOnboardingComplete) {
-    return <OnboardingFlow onComplete={() => setIsOnboardingComplete(true)} />;
+    return <OnboardingFlow onComplete={() => {
+      setIsOnboardingComplete(true);
+      setActiveTab('billing'); // Force redirect to billing for initial payment
+    }} />;
   }
 
   const navigation: NavigationSection[] = [
@@ -118,6 +123,25 @@ const App: React.FC = () => {
     ]}
   ];
 
+  const handleTabChange = (id: string) => {
+    if (!isActivated && id !== 'billing') {
+      alert("Authorization Required: Please activate your workforce plan in the Billing Hub before accessing other protocols.");
+      return;
+    }
+    setActiveTab(id);
+  };
+
+  const handleActivation = (tier: PlanTier) => {
+    setIsActivated(true);
+    setSubscription({
+      ...subscription,
+      tier,
+      status: SubscriptionStatus.ACTIVE,
+      credits: tier === PlanTier.STARTER ? 1500 : tier === PlanTier.GROWTH ? 5000 : 15000
+    });
+    setActiveTab('dashboard'); // Redirect to dashboard once activated
+  };
+
   const filteredNavigation = navigation.map(group => ({
     ...group,
     items: group.items.filter(item => !item.role || item.role === userRole)
@@ -125,28 +149,25 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-white text-slate-900 font-sans relative">
-      {/* GLOBAL BANNER FOR OVERDUE OR FREE TIER */}
-      {subscription.overdue ? (
-        <div className="absolute top-0 left-0 right-0 h-12 bg-red-600 text-white z-[100] flex items-center justify-between px-10 animate-in slide-in-from-top duration-500 shadow-xl">
-           <div className="flex items-center gap-3">
-              <AlertTriangle size={18} className="animate-pulse" />
-              <p className="text-[10px] font-black uppercase tracking-widest">Workforce Protocol Blocked: Subscription Overdue. AI Employee is on strike.</p>
-           </div>
-           <button onClick={() => setActiveTab('billing')} className="bg-white text-red-600 px-4 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2">
-             Settle Ledger <ArrowRight size={12} />
-           </button>
+      {/* GLOBAL BANNER MATCHING SCREENSHOT PURPLE STYLE */}
+      {!isActivated || subscription.tier === PlanTier.FREE ? (
+        <div className="absolute top-0 left-0 right-0 h-[60px] bg-[#5143E1] text-white z-[100] flex items-center justify-center gap-6 px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
+           <Rocket size={20} className="animate-bounce" />
+           <p className="text-[12px] font-black uppercase tracking-[0.25em]">Running on Free Pulse – Deployment restricted until upgrade</p>
+           <button onClick={() => setActiveTab('billing')} className="bg-white text-[#5143E1] px-6 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg active:scale-95">Upgrade Now</button>
         </div>
-      ) : subscription.tier === PlanTier.FREE ? (
-        <div className="absolute top-0 left-0 right-0 h-10 bg-indigo-600 text-white z-[100] flex items-center justify-center gap-4 px-10 animate-in slide-in-from-top duration-500 shadow-lg">
-           <Rocket size={14} className="animate-bounce" />
-           <p className="text-[9px] font-black uppercase tracking-[0.2em]">Running on Free Pulse – Deployment restricted until upgrade</p>
-           <button onClick={() => setActiveTab('billing')} className="bg-white text-indigo-600 px-3 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all">Upgrade Now</button>
+      ) : subscription.overdue ? (
+        <div className="absolute top-0 left-0 right-0 h-[60px] bg-red-600 text-white z-[100] flex items-center justify-between px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
+           <div className="flex items-center gap-3">
+              <AlertTriangle size={20} className="animate-pulse" />
+              <p className="text-[12px] font-black uppercase tracking-widest">Workforce Protocol Blocked: Subscription Overdue. AI Employee is on strike.</p>
+           </div>
+           <button onClick={() => setActiveTab('billing')} className="bg-white text-red-600 px-6 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg">Settle Ledger</button>
         </div>
       ) : null}
 
-      <aside className={`w-80 bg-white border-r border-slate-100 flex flex-col z-30 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${(subscription.overdue || subscription.tier === PlanTier.FREE) ? 'mt-12' : ''}`}>
+      <aside className={`w-80 bg-white border-r border-slate-100 flex flex-col z-30 shadow-[4px_0_24px_rgba(0,0,0,0.02)] ${(!isActivated || subscription.overdue || subscription.tier === PlanTier.FREE) ? 'mt-[60px]' : ''}`}>
         <div className="p-8">
-          {/* Logo container - Removed background for better fit */}
           <div className="p-4 flex justify-center group">
             <img 
               src="https://storage.googleapis.com/inflow_website_image/new_logo-removebg-preview.png" 
@@ -163,19 +184,20 @@ const App: React.FC = () => {
               {group.items.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => handleTabChange(item.id)}
+                  disabled={!isActivated && item.id !== 'billing'}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all relative ${
                     activeTab === item.id
                       ? 'bg-gradient-to-r from-[#5143E1] to-[#7164f0] text-white shadow-xl shadow-indigo-100'
-                      : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'
+                      : !isActivated && item.id !== 'billing' ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-slate-300'} />
                   {item.name}
-                  {item.restrictedForFree && subscription.tier === PlanTier.FREE && (
+                  {((!isActivated && item.id !== 'billing') || (item.restrictedForFree && subscription.tier === PlanTier.FREE)) && (
                     <Lock size={12} className="ml-auto text-slate-300" />
                   )}
-                  {item.badge && !item.restrictedForFree && (
+                  {item.badge && isActivated && (
                     <span className={`ml-auto w-5 h-5 ${activeTab === item.id ? 'bg-white/20 text-white' : 'bg-orange-50 text-orange-600'} text-[9px] font-black flex items-center justify-center rounded-full`}>
                       {item.badge}
                     </span>
@@ -191,38 +213,53 @@ const App: React.FC = () => {
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-700 font-black border border-indigo-100 text-sm shadow-inner">JD</div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">Founders Hub</p>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{subscription.credits.toLocaleString()} AI Credits</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{isActivated ? subscription.credits.toLocaleString() : 0} AI Credits</p>
             </div>
           </div>
-          {subscription.tier === PlanTier.FREE && (
-             <button onClick={() => setActiveTab('billing')} className="w-full py-4 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2">
-                <ChevronUp size={14} /> Go Unlimited
+          {(subscription.tier === PlanTier.FREE || !isActivated) && (
+             <button onClick={() => setActiveTab('billing')} className="w-full py-4 bg-[#5143E1] text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2">
+                <ChevronUp size={14} /> {isActivated ? 'Go Unlimited' : 'Activate Pulse'}
              </button>
           )}
         </div>
       </aside>
 
-      <main className={`flex-1 flex flex-col min-w-0 overflow-hidden bg-white ${(subscription.overdue || subscription.tier === PlanTier.FREE) ? 'mt-12' : ''}`}>
+      <main className={`flex-1 flex flex-col min-w-0 overflow-hidden bg-white ${(!isActivated || subscription.overdue || subscription.tier === PlanTier.FREE) ? 'mt-[60px]' : ''}`}>
         <header className="h-24 border-b border-slate-100 flex items-center justify-between px-12 shrink-0 z-20 bg-white">
-          <h1 className="text-sm font-black text-slate-900 uppercase tracking-[0.3em]">
+          <h1 className="text-lg font-black text-slate-900 uppercase tracking-[0.4em]">
             {activeTab.replace('-', ' ')}
           </h1>
-          <div className="flex items-center gap-8">
-            <div className={`hidden sm:flex items-center gap-3 px-5 py-2.5 ${subscription.overdue ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'} rounded-2xl text-[10px] font-black uppercase tracking-widest border`}>
-              <Activity size={16} className={subscription.overdue ? '' : 'animate-pulse'} /> Protocol: {subscription.overdue ? 'Paused' : 'Running'}
+          <div className="flex items-center gap-6">
+            <div className={`hidden sm:flex items-center gap-3 px-6 py-3 ${(!isActivated || subscription.overdue) ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'} rounded-2xl text-[11px] font-black uppercase tracking-widest border shadow-sm`}>
+              <Activity size={18} className={(!isActivated || subscription.overdue) ? '' : 'animate-pulse text-emerald-500'} /> PROTOCOL: {(!isActivated || subscription.overdue) ? 'PAUSED' : 'RUNNING'}
             </div>
             <button 
-              disabled={subscription.overdue || subscription.tier === PlanTier.FREE}
+              disabled={!isActivated || subscription.overdue || subscription.tier === PlanTier.FREE}
               onClick={() => setIsFormOpen(true)}
-              className={`${(subscription.overdue || subscription.tier === PlanTier.FREE) ? 'bg-slate-200 cursor-not-allowed text-slate-400' : 'bg-[#5143E1] hover:bg-indigo-700 text-white shadow-xl shadow-indigo-100 active:scale-95'} px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all`}
+              className={`${(!isActivated || subscription.overdue || subscription.tier === PlanTier.FREE) ? 'bg-slate-200 cursor-not-allowed text-slate-400' : 'bg-[#E5E9F0] hover:bg-slate-200 text-slate-900 shadow-sm active:scale-95'} px-10 py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] flex items-center gap-3 transition-all border border-slate-200`}
             >
-              <Plus size={18} /> Add Signal
+              <Plus size={20} /> Add Signal
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-12 bg-[#FBFCFE] relative">
-          {subscription.overdue && activeTab !== 'billing' ? (
+        <div className="flex-1 overflow-y-auto p-12 bg-white relative">
+          {!isActivated && activeTab !== 'billing' ? (
+             <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-white rounded-[4rem] border border-red-100 shadow-xl space-y-10 animate-in zoom-in-95 duration-500">
+                <div className="w-36 h-36 bg-red-50 rounded-[4rem] flex items-center justify-center text-red-600 shadow-inner">
+                    <Lock size={72} />
+                </div>
+                <div className="space-y-4 max-w-2xl">
+                    <h2 className="text-5xl font-black text-slate-900 tracking-tight uppercase">Workforce Idle</h2>
+                    <p className="text-slate-500 text-xl font-medium leading-relaxed italic">
+                      "Initial handshake incomplete. Your Digital Employee requires a fuel deposit to begin its shift. Access the Billing Hub to activate your chosen tier."
+                    </p>
+                </div>
+                <button onClick={() => setActiveTab('billing')} className="px-14 py-6 bg-red-600 text-white font-black text-sm uppercase tracking-[0.2em] rounded-[2.5rem] hover:bg-red-700 transition-all shadow-2xl shadow-red-200 active:scale-95 flex items-center gap-5">
+                  Activate workforce Protocol <ArrowRight size={24} />
+                </button>
+             </div>
+          ) : subscription.overdue && activeTab !== 'billing' ? (
             <div className="h-full flex flex-col items-center justify-center p-12 text-center bg-white rounded-[4rem] border border-red-100 shadow-xl space-y-10 animate-in zoom-in-95 duration-500">
                <div className="w-36 h-36 bg-red-50 rounded-[4rem] flex items-center justify-center text-red-600 shadow-inner relative">
                   <ShieldAlert size={72} />
@@ -259,7 +296,7 @@ const App: React.FC = () => {
               {activeTab === 'reviews' && (subscription.tier === PlanTier.FREE ? <FeatureLock description="Social Proof automation is disabled." /> : <ReviewManager />)}
               {activeTab === 'automation-hub' && (subscription.tier === PlanTier.FREE ? <FeatureLock description="n8n Orchestration requires Growth fuel." /> : <AutomationHub />)}
               {activeTab === 'engine' && <EdgeFunctionsCode />}
-              {activeTab === 'billing' && <BillingManager />}
+              {activeTab === 'billing' && <BillingManager onActivate={handleActivation} />}
               {activeTab === 'reporting' && <ReportingManager />}
               {activeTab === 'partner' && <PartnerHub />}
               {activeTab === 'profile' && <UserProfile user={{ id: 'u_1', full_name: 'John Doe', email: 'john@digitalemployee.me', role: userRole, workspace: 'Workforce HQ' }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}
