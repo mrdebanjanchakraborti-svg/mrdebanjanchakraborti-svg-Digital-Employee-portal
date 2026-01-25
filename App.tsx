@@ -7,7 +7,7 @@ import {
   Activity, Star, Layers, Code, ShieldAlert, AlertTriangle, 
   ArrowRight, PieChart, Award, DollarSign, Crown, UserCircle,
   Archive, Rocket, ChevronUp, Lock, Radio, PlayCircle, History, Share, HeartPulse,
-  Plus as PlusIcon, Wallet, FileText, Receipt, Timer
+  Plus as PlusIcon, Wallet, FileText, Receipt, Timer, LogOut
 } from 'lucide-react';
 import LeadKanban from './components/LeadKanban';
 import LeadAnalytics from './components/LeadAnalytics';
@@ -40,7 +40,7 @@ import TriggerManager from './components/TriggerManager';
 import OutgoingTriggerManager from './components/OutgoingTriggerManager';
 import WalletLedger from './components/WalletLedger';
 import SubscriptionLedger from './components/SubscriptionLedger';
-import { UserRole, PlanTier, SubscriptionStatus } from './types';
+import { UserRole, PlanTier, SubscriptionStatus, SubscriptionOrder } from './types';
 
 interface NavigationItem {
   id: string;
@@ -74,6 +74,8 @@ const App: React.FC = () => {
     expiresAt: '2024-12-30'
   });
 
+  const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
+
   // Calculate if the Free Tier is expired
   const isExpired = useMemo(() => {
     if (!isActivated || subscription.tier !== PlanTier.FREE) return false;
@@ -84,6 +86,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('pulse_activated');
     const savedCredits = localStorage.getItem('pulse_credits');
     const savedExpiry = localStorage.getItem('pulse_expiry');
+    const savedOrders = localStorage.getItem('pulse_orders');
     
     if (saved === 'true') {
       setIsActivated(true);
@@ -94,14 +97,24 @@ const App: React.FC = () => {
         expiresAt: savedExpiry || prev.expiresAt
       }));
     }
+
+    if (savedOrders) {
+      setOrders(JSON.parse(savedOrders));
+    }
   }, []);
 
   useEffect(() => {
     if (isActivated) {
       localStorage.setItem('pulse_credits', subscription.credits.toString());
       localStorage.setItem('pulse_expiry', subscription.expiresAt);
+      localStorage.setItem('pulse_orders', JSON.stringify(orders));
     }
-  }, [subscription.credits, subscription.expiresAt, isActivated]);
+  }, [subscription.credits, subscription.expiresAt, isActivated, orders]);
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    // Optionally clear temporary session data here if needed
+  };
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
@@ -168,23 +181,44 @@ const App: React.FC = () => {
   const handleActivation = (tier: PlanTier) => {
     let credits = 200;
     let validityDays = 10;
+    let price = 0;
+    let setup = 100;
 
-    if (tier === PlanTier.STARTER) { credits = 1500; validityDays = 30; }
-    else if (tier === PlanTier.GROWTH) { credits = 6000; validityDays = 30; }
-    else if (tier === PlanTier.PRO) { credits = 15000; validityDays = 30; }
-    else if (tier === PlanTier.ENTERPRISE) { credits = 40500; validityDays = 30; }
+    if (tier === PlanTier.STARTER) { credits = 1500; validityDays = 30; price = 2500; setup = 10000; }
+    else if (tier === PlanTier.GROWTH) { credits = 6000; validityDays = 30; price = 6500; setup = 25000; }
+    else if (tier === PlanTier.PRO) { credits = 15000; validityDays = 30; price = 15000; setup = 35000; }
+    else if (tier === PlanTier.ENTERPRISE) { credits = 40500; validityDays = 30; price = 35500; setup = 50000; }
 
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + validityDays);
+    const expiryStr = expiryDate.toISOString().split('T')[0];
+
+    // Generate Order Record for Audit Ledger
+    const newOrder: SubscriptionOrder = {
+      id: Math.random().toString(36).substr(2, 9).toUpperCase(),
+      order_date: new Date().toISOString(),
+      company_name: 'Workforce Workspace',
+      industry_focus: 'Automation',
+      order_id: `ORD_${tier.toUpperCase()}_${Math.floor(Math.random() * 10000)}`,
+      razorpay_order_id: `order_${Math.random().toString(36).substr(2, 12)}`,
+      razorpay_payment_id: `pay_${Math.random().toString(36).substr(2, 12)}`,
+      razorpay_signature: Math.random().toString(36).substr(2, 32),
+      active_plan: tier,
+      purchase_amount: price + setup,
+      renewal_date: expiryStr,
+      renewal_amount: price,
+      status: 'active'
+    };
 
     setIsActivated(true);
     localStorage.setItem('pulse_activated', 'true');
+    setOrders(prev => [newOrder, ...prev]);
     setSubscription(prev => ({
       ...prev,
       tier,
       status: SubscriptionStatus.ACTIVE,
       credits: prev.credits + credits,
-      expiresAt: expiryDate.toISOString().split('T')[0]
+      expiresAt: expiryStr
     }));
   };
 
@@ -283,6 +317,13 @@ const App: React.FC = () => {
               <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">Founders Hub</p>
               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{isActivated ? subscription.credits.toLocaleString() : 0} Cr</p>
             </div>
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+              title="Terminate Session"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
           <div className="p-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-[1.25rem] shadow-lg shadow-indigo-100">
              <button onClick={() => setActiveTab('billing')} className="w-full py-4 bg-[#5143E1] text-white text-[10px] font-black uppercase tracking-[0.1em] rounded-[1.2rem] hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2">
@@ -339,7 +380,7 @@ const App: React.FC = () => {
                 {activeTab === 'engine' && <EdgeFunctionsCode />}
                 {activeTab === 'billing' && <BillingManager onActivate={handleActivation} onRecharge={handleRecharge} globalBalance={subscription.credits} />}
                 {activeTab === 'ledger' && <WalletLedger balance={subscription.credits} />}
-                {activeTab === 'subscription-ledger' && <SubscriptionLedger />}
+                {activeTab === 'subscription-ledger' && <SubscriptionLedger externalOrders={orders} />}
                 {activeTab === 'reporting' && <ReportingManager />}
                 {activeTab === 'partner' && <PartnerHub />}
                 {activeTab === 'profile' && <UserProfile user={{ id: 'u_1', full_name: 'John Doe', email: 'john@digitalemployee.me', role: userRole, workspace: 'Workforce HQ' }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}

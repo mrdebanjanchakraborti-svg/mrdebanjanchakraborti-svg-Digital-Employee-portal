@@ -1,6 +1,5 @@
 
-import React, { useState } from 'react';
-// Added MoreHorizontal to the imports below
+import React, { useState, useMemo } from 'react';
 import { 
   Receipt, Search, Filter, Download, Calendar, 
   CreditCard, ShieldCheck, ArrowUpRight, Copy,
@@ -12,7 +11,7 @@ import {
 } from 'lucide-react';
 import { PlanTier, SubscriptionOrder } from '../types';
 
-const MOCK_SUBSCRIPTION_ORDERS: (SubscriptionOrder & { verified: boolean })[] = [
+const MOCK_SUBSCRIPTION_ORDERS: SubscriptionOrder[] = [
   {
     id: '1',
     order_date: '2024-11-20T10:00:00Z',
@@ -26,44 +25,15 @@ const MOCK_SUBSCRIPTION_ORDERS: (SubscriptionOrder & { verified: boolean })[] = 
     purchase_amount: 6500,
     renewal_date: '2024-12-20',
     renewal_amount: 6500,
-    status: 'active',
-    verified: true
-  },
-  {
-    id: '2',
-    order_date: '2024-10-21T14:30:00Z',
-    company_name: 'Blue Harbor Realty',
-    industry_focus: 'Real Estate',
-    order_id: 'SUB_INFRA_8842',
-    razorpay_order_id: 'order_AM2x9b3c4d5e6f',
-    razorpay_payment_id: 'pay_BM2x9b3c4d5e6f',
-    razorpay_signature: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2',
-    active_plan: PlanTier.STARTER,
-    purchase_amount: 2500,
-    renewal_date: '2024-11-21',
-    renewal_amount: 2500,
-    status: 'expired',
-    verified: true
-  },
-  {
-    id: '3',
-    order_date: '2024-11-22T09:15:00Z',
-    company_name: 'Alpha Logistics Group',
-    industry_focus: 'Supply Chain',
-    order_id: 'SUB_INFRA_1120',
-    razorpay_order_id: 'order_CX9v7k2l5m',
-    razorpay_payment_id: 'pay_TX2p8h4j1q',
-    razorpay_signature: 'b8c9d0e1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9',
-    active_plan: PlanTier.PRO,
-    purchase_amount: 15000,
-    renewal_date: '2024-12-22',
-    renewal_amount: 15000,
-    status: 'active',
-    verified: true
+    status: 'active'
   }
 ];
 
-const SubscriptionLedger: React.FC = () => {
+interface SubscriptionLedgerProps {
+  externalOrders?: SubscriptionOrder[];
+}
+
+const SubscriptionLedger: React.FC<SubscriptionLedgerProps> = ({ externalOrders = [] }) => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'expired'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -74,13 +44,18 @@ const SubscriptionLedger: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const filteredOrders = MOCK_SUBSCRIPTION_ORDERS.filter(o => {
-    const matchesSearch = o.company_name.toLowerCase().includes(search.toLowerCase()) ||
-                         o.order_id.toLowerCase().includes(search.toLowerCase()) ||
-                         o.razorpay_order_id.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === 'all' || o.status === filter;
-    return matchesSearch && matchesFilter;
-  });
+  const combinedOrders = useMemo(() => {
+    // Combine mock data with real external orders, real ones first
+    const all = [...externalOrders, ...MOCK_SUBSCRIPTION_ORDERS];
+    // Filter by search and status
+    return all.filter(o => {
+      const matchesSearch = o.company_name.toLowerCase().includes(search.toLowerCase()) ||
+                           o.order_id.toLowerCase().includes(search.toLowerCase()) ||
+                           o.razorpay_order_id.toLowerCase().includes(search.toLowerCase());
+      const matchesFilter = filter === 'all' || o.status === filter;
+      return matchesSearch && matchesFilter;
+    });
+  }, [externalOrders, search, filter]);
 
   return (
     <div className="space-y-12 animate-in fade-in duration-500 pb-20 max-w-full">
@@ -238,7 +213,7 @@ const SubscriptionLedger: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredOrders.map((order) => (
+              {combinedOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-slate-50 transition-all group">
                   <td className="px-12 py-8">
                     <div className="space-y-1">
@@ -295,7 +270,7 @@ const SubscriptionLedger: React.FC = () => {
                       <button className="p-3 bg-white border border-slate-200 rounded-2xl text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm active:scale-90" title="Download Subscription Invoice">
                         <FileText size={18} />
                       </button>
-                      <button className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-slate-900 transition-all shadow-sm active:scale-90">
+                      <button className="p-3 bg-white border border-slate-200 rounded-2xl text-suffix-500 hover:text-indigo-600 shadow-sm active:scale-90">
                          <MoreHorizontal size={18} />
                       </button>
                     </div>
@@ -306,7 +281,7 @@ const SubscriptionLedger: React.FC = () => {
           </table>
         </div>
         
-        {filteredOrders.length === 0 && (
+        {combinedOrders.length === 0 && (
           <div className="p-32 text-center space-y-8 animate-in fade-in zoom-in duration-500">
              <div className="w-24 h-24 bg-slate-50 border-4 border-dashed border-slate-100 rounded-[3rem] mx-auto flex items-center justify-center text-slate-200 shadow-inner group">
                 <Search size={48} className="group-hover:scale-110 transition-transform duration-700" />
