@@ -10,22 +10,30 @@ import {
 } from 'lucide-react';
 import { PlanTier } from '../types';
 
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 interface BillingManagerProps {
   onActivate?: (tier: PlanTier) => void;
 }
 
+const RZP_KEY_ID = 'rzp_live_S7OpKckU34utHp';
+
 const PLAN_DETAILS = [
-  { id: PlanTier.FREE, name: 'FREE TIER', price: 0, setupFee: 100, paymentLink: 'https://rzp.io/rzp/1tUsJiDs', validity: '10 DAYS VALIDITY', credits: 200, triggers: 1, features: ['Dashboard Access', '1 Trigger'], btnText: 'ACTIVATE' },
-  { id: PlanTier.STARTER, name: 'STARTER PLAN', price: 2500, setupFee: 10000, paymentLink: 'https://rzp.io/rzp/5tgzoh2', validity: '30 DAYS VALIDITY', credits: 1500, triggers: 3, features: ['WhatsApp + Email', '3 Triggers'], btnText: 'DEPLOY' },
-  { id: PlanTier.GROWTH, name: 'GROWTH PLAN', price: 6500, setupFee: 25000, paymentLink: 'https://rzp.io/rzp/7eCx0RD8', validity: '30 DAYS VALIDITY', credits: 6000, triggers: 10, features: ['AI Content', '10 Triggers'], btnText: 'DEPLOY', popular: true },
-  { id: PlanTier.PRO, name: 'PROFESSIONAL PLAN', price: 15000, setupFee: 35000, paymentLink: 'https://rzp.io/rzp/wf3lxmh', validity: '30 DAYS VALIDITY', credits: 15000, triggers: 25, features: ['AI Voice', '25 Triggers'], btnText: 'DEPLOY' },
-  { id: PlanTier.ENTERPRISE, name: 'ENTERPRISE PLAN', price: 35500, setupFee: 50000, paymentLink: 'https://rzp.io/rzp/cGGRobq', validity: '30 DAYS VALIDITY', credits: 40500, triggers: 999, features: ['Unlimited Scale'], btnText: 'DEPLOY' }
+  { id: PlanTier.FREE, name: 'FREE TIER', price: 0, setupFee: 100, validity: '10 DAYS VALIDITY', credits: 200, triggers: 1, features: ['Dashboard Access', '1 Trigger'], btnText: 'ACTIVATE' },
+  { id: PlanTier.STARTER, name: 'STARTER PLAN', price: 2500, setupFee: 10000, validity: '30 DAYS VALIDITY', credits: 1500, triggers: 3, features: ['WhatsApp + Email', '3 Triggers'], btnText: 'DEPLOY' },
+  { id: PlanTier.GROWTH, name: 'GROWTH PLAN', price: 6500, setupFee: 25000, validity: '30 DAYS VALIDITY', credits: 6000, triggers: 10, features: ['AI Content', '10 Triggers'], btnText: 'DEPLOY', popular: true },
+  { id: PlanTier.PRO, name: 'PROFESSIONAL PLAN', price: 15000, setupFee: 35000, validity: '30 DAYS VALIDITY', credits: 15000, triggers: 25, features: ['AI Voice', '25 Triggers'], btnText: 'DEPLOY' },
+  { id: PlanTier.ENTERPRISE, name: 'ENTERPRISE PLAN', price: 35500, setupFee: 50000, validity: '30 DAYS VALIDITY', credits: 40500, triggers: 999, features: ['Unlimited Scale'], btnText: 'DEPLOY' }
 ];
 
 const RECHARGE_PACKS = [
-  { id: 'pack_small', name: 'FUEL MICRO', credits: 500, price: 999, paymentLink: 'https://rzp.io/rzp/1tUsJiDs', color: 'indigo' },
-  { id: 'pack_medium', name: 'FUEL STANDBY', credits: 2500, price: 3999, paymentLink: 'https://rzp.io/rzp/1tUsJiDs', color: 'purple' },
-  { id: 'pack_large', name: 'FUEL SCALE', credits: 10000, price: 12999, paymentLink: 'https://rzp.io/rzp/1tUsJiDs', color: 'emerald' }
+  { id: 'pack_small', name: 'FUEL MICRO', credits: 500, price: 999, color: 'indigo' },
+  { id: 'pack_medium', name: 'FUEL STANDBY', credits: 2500, price: 3999, color: 'purple' },
+  { id: 'pack_large', name: 'FUEL SCALE', credits: 10000, price: 12999, color: 'emerald' }
 ];
 
 const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
@@ -45,33 +53,66 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
     setShowCart(true);
   };
 
+  const initRazorpay = (amount: number, name: string, description: string, isRecharge = false) => {
+    const options = {
+      key: RZP_KEY_ID,
+      amount: Math.round(amount * 1.18 * 100), // Amount in paise (inc 18% GST)
+      currency: "INR",
+      name: "AI Workforce Infrastructure",
+      description: `${name}: ${description}`,
+      image: "https://storage.googleapis.com/inflow_website_image/new_logo-removebg-preview.png",
+      handler: function(response: any) {
+        setHandshakeState('verifying');
+        startVerificationPulse(response.razorpay_payment_id);
+      },
+      prefill: {
+        name: "John Doe",
+        email: "john@digitalemployee.me",
+        contact: "919876543210"
+      },
+      notes: {
+        workspace_id: "ws_123_alpha",
+        type: isRecharge ? "wallet_fuel" : "subscription_activation",
+        plan_tier: isRecharge ? "n/a" : cart?.id
+      },
+      theme: {
+        color: "#5143E1"
+      }
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', function (response: any) {
+        setHandshakeState('failed');
+        alert("Security Handshake Failed: " + response.error.description);
+    });
+    rzp.open();
+  };
+
   const handleCheckout = () => {
     if (!cart) return;
     setIsProcessing(cart.id);
     
-    setTimeout(() => {
-      setHandshakeState('awaiting_payment');
-      window.open(cart.paymentLink, '_blank');
-      setIsProcessing(null);
-      setShowCart(false);
-    }, 1000);
+    // Total price calculation
+    const amount = cart.price + cart.setupFee;
+    initRazorpay(amount, cart.name, "Plan Deployment & Security Setup");
+    setIsProcessing(null);
+    setShowCart(false);
   };
 
   const handleRechargeSelect = (pack: typeof RECHARGE_PACKS[0]) => {
     setSelectedRecharge(pack);
     setIsProcessing(pack.id);
     
-    setTimeout(() => {
-      setHandshakeState('awaiting_payment');
-      window.open(pack.paymentLink, '_blank');
-      setIsProcessing(null);
-      setShowRecharge(false);
-    }, 800);
+    initRazorpay(pack.price, pack.name, "AI Credit Fuel Injection", true);
+    setIsProcessing(null);
+    setShowRecharge(false);
   };
 
-  const startVerificationPulse = () => {
-    setHandshakeState('verifying');
-    setLogs(["INITIALIZING SECURITY HANDSHAKE...", "FETCHING RZP_PAYMENT_ID FROM LEDGER..."]);
+  const startVerificationPulse = (paymentId: string) => {
+    setLogs([
+      "INITIALIZING SECURITY HANDSHAKE...", 
+      `FETCHING RZP_PAYMENT_ID: ${paymentId} FROM GATEWAY...`
+    ]);
 
     const verificationSteps = [
       "EXTRACTING X-RAZORPAY-SIGNATURE...",
@@ -140,32 +181,16 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
               </header>
 
               <main className="flex-1 p-10 overflow-hidden flex flex-col gap-10">
-                 {handshakeState === 'awaiting_payment' ? (
+                 {handshakeState === 'failed' ? (
                    <div className="flex-1 flex flex-col items-center justify-center text-center space-y-8">
-                      <div className="w-24 h-24 bg-indigo-500/10 border border-indigo-500/20 rounded-full flex items-center justify-center relative">
-                         <CreditCard size={40} className="text-indigo-400 animate-bounce" />
-                         <div className="absolute inset-0 bg-indigo-500/10 rounded-full blur-2xl animate-pulse" />
+                      <div className="w-20 h-20 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center border border-rose-500/20 shadow-lg">
+                        <AlertTriangle size={32} />
                       </div>
-                      <div className="space-y-3">
-                         <h2 className="text-2xl font-black text-white uppercase tracking-tight">Payment Initiated</h2>
-                         <p className="text-slate-500 text-sm max-w-sm mx-auto font-medium italic">
-                           "Complete your transaction in the separate Razorpay window. We are currently listening for the signature capture."
-                         </p>
+                      <div className="space-y-2">
+                         <h3 className="text-2xl font-black text-white uppercase tracking-tight">Transaction Failed</h3>
+                         <p className="text-slate-500 text-sm max-w-sm mx-auto font-medium">Please re-authorize or check your ledger credentials.</p>
                       </div>
-                      <div className="flex flex-col w-full gap-3">
-                         <button 
-                          onClick={startVerificationPulse}
-                          className="w-full py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-emerald-500 transition-all active:scale-95 flex items-center justify-center gap-3"
-                         >
-                            <ShieldCheck size={18} /> I have paid successfully
-                         </button>
-                         <button 
-                          onClick={resetHandshake}
-                          className="text-slate-600 text-[10px] font-black uppercase hover:text-white transition-colors"
-                         >
-                            Abort Transaction & Protocol
-                         </button>
-                      </div>
+                      <button onClick={resetHandshake} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl">Retry Protocol</button>
                    </div>
                  ) : (
                    <div className="flex-1 bg-black/40 border border-white/5 rounded-3xl p-6 font-mono text-[11px] text-indigo-300/70 overflow-y-auto custom-scrollbar space-y-1">
@@ -239,7 +264,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                        <div className="space-y-3">
                           <h4 className="text-xl font-black uppercase tracking-tight">Instant Fuel Delivery</h4>
                           <p className="text-[11px] text-indigo-200/80 font-medium leading-relaxed italic max-w-lg">
-                            "AI credits are added instantly to your global ledger upon signature verification. Credits never expire and carry forward indefinitely."
+                            "AI credits are added instantly to your global ledger upon signature verification via Razorpay."
                           </p>
                        </div>
                     </div>
@@ -249,7 +274,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
 
               <footer className="p-10 border-t border-slate-100 bg-white flex justify-center shrink-0">
                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] flex items-center gap-3">
-                    <ShieldCheck size={16} /> Secured by Razorpay Handshake v2.4
+                    <ShieldCheck size={16} /> Native Razorpay Integration v2.8 (Live)
                  </p>
               </footer>
            </div>
@@ -331,6 +356,16 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                                <span className="text-sm font-black uppercase text-slate-900 tracking-widest">Total Payable (Inc. GST)</span>
                                <span className="text-4xl font-black text-slate-900 tracking-tighter">₹{total.toLocaleString()}</span>
                             </div>
+                         </div>
+                      </div>
+
+                      <div className="p-8 bg-indigo-50 border border-indigo-100 rounded-3xl flex gap-6">
+                         <ShieldCheck size={32} className="text-indigo-600 shrink-0" />
+                         <div>
+                            <h4 className="text-[11px] font-black uppercase text-indigo-950">Gateway Verified</h4>
+                            <p className="text-[10px] font-bold text-indigo-700/70 italic leading-relaxed">
+                               Payments are handled via secure Razorpay vaulting. We only authorize workforce deployment upon valid signature capture.
+                            </p>
                          </div>
                       </div>
                    </div>
@@ -476,7 +511,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                      </div>
                   </div>
                   <p className="text-[#94A3B8] text-sm md:text-base font-medium italic opacity-60 leading-relaxed max-w-md hidden sm:block">
-                    Credits are deducted **only on successful execution**. Signals return to ledger if endpoints fail.
+                    Credits are deducted **only on successful execution**. Gateway identity verified via Razorpay Handshake.
                   </p>
                </div>
             </div>
