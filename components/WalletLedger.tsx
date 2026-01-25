@@ -1,6 +1,4 @@
-
 import React, { useState } from 'react';
-/* Added Archive and ExternalLink to the imports below */
 import { 
   Wallet, ArrowUpRight, ArrowDownLeft, Search, Filter, 
   Download, Clock, CheckCircle2, AlertCircle, RefreshCw,
@@ -86,7 +84,7 @@ const WalletLedger: React.FC<{ balance: number }> = ({ balance }) => {
           <div className="relative z-10 space-y-4">
             <div className="flex items-center justify-between">
                <h3 className="text-[11px] font-black text-indigo-300 uppercase tracking-[0.4em] flex items-center gap-3">
-                 <Coins size={18} className="animate-pulse" /> Fuel Solvency Pulse
+                 <Coins size={18} className="animate-pulse" /> Current Wallet Balance
                </h3>
                <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[9px] font-black text-emerald-400 uppercase tracking-widest">Live Ledger</span>
             </div>
@@ -95,7 +93,7 @@ const WalletLedger: React.FC<{ balance: number }> = ({ balance }) => {
                <p className="text-xl font-black text-indigo-400 uppercase tracking-widest opacity-60">CR</p>
             </div>
             <p className="text-[11px] font-bold text-slate-400 max-w-xs italic leading-relaxed">
-              "Authenticated workforce fuel. Synchronized with global Razorpay ledger."
+              "Total AI fuel pool. Includes subscription credits and manual fuel injections."
             </p>
           </div>
           <div className="relative z-10 flex gap-4 pt-6 mt-6 border-t border-white/5">
@@ -257,7 +255,7 @@ const WalletLedger: React.FC<{ balance: number }> = ({ balance }) => {
                       ) : (
                         <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg w-fit">
                            <Zap size={10} className="text-slate-400" />
-                           <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Ref: {txn.reference_id || 'System_Pulse'}</span>
+                           <span className="text-[9px] font-black text-suffix-500 uppercase tracking-widest">Ref: {txn.reference_id || 'System_Pulse'}</span>
                         </div>
                       )}
                     </div>

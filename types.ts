@@ -1,7 +1,9 @@
 
 export enum LeadStatus {
   URGENT = 'urgent',
+  ATTENTION = 'attention',
   FOLLOW_UP = 'follow_up',
+  ACTION_REQUIRED = 'action_required',
   NEW = 'new',
   CONTACTED = 'contacted',
   QUALIFIED = 'qualified',

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, Zap, Check, ShieldCheck, Loader2, 
@@ -18,16 +17,79 @@ declare global {
 
 interface BillingManagerProps {
   onActivate?: (tier: PlanTier) => void;
+  onRecharge?: (amount: number) => void;
+  globalBalance: number;
 }
 
 const RZP_KEY_ID = 'rzp_live_S7OpKckU34utHp';
 
 const PLAN_DETAILS = [
-  { id: PlanTier.FREE, name: 'FREE TIER', price: 0, setupFee: 100, validity: '10 DAYS VALIDITY', credits: 200, triggers: 1, features: ['Dashboard Access', '1 Trigger'], btnText: 'ACTIVATE' },
-  { id: PlanTier.STARTER, name: 'STARTER PLAN', price: 2500, setupFee: 10000, validity: '30 DAYS VALIDITY', credits: 1500, triggers: 3, features: ['WhatsApp + Email', '3 Triggers'], btnText: 'DEPLOY' },
-  { id: PlanTier.GROWTH, name: 'GROWTH PLAN', price: 6500, setupFee: 25000, validity: '30 DAYS VALIDITY', credits: 6000, triggers: 10, features: ['AI Content', '10 Triggers'], btnText: 'DEPLOY', popular: true },
-  { id: PlanTier.PRO, name: 'PROFESSIONAL PLAN', price: 15000, setupFee: 35000, validity: '30 DAYS VALIDITY', credits: 15000, triggers: 25, features: ['AI Voice', '25 Triggers'], btnText: 'DEPLOY' },
-  { id: PlanTier.ENTERPRISE, name: 'ENTERPRISE PLAN', price: 35500, setupFee: 50000, validity: '30 DAYS VALIDITY', credits: 40500, triggers: 999, features: ['Unlimited Scale'], btnText: 'DEPLOY' }
+  { 
+    id: PlanTier.FREE, 
+    name: 'FREE TIER', 
+    bestFor: 'Rapid platform evaluation', 
+    price: 0, 
+    setupFee: 100, 
+    validity: '10 DAYS VALIDITY', 
+    credits: 200, 
+    daily_limit: 20, 
+    triggers: 1, 
+    features: ['Dashboard Access', 'Workflow Preview', 'Brand Setup', 'Limited Trigger Testing'], 
+    btnText: 'ACTIVATE' 
+  },
+  { 
+    id: PlanTier.STARTER, 
+    name: 'STARTER PLAN', 
+    bestFor: 'Solo founders & startups', 
+    price: 2500, 
+    setupFee: 10000, 
+    validity: '30 DAYS VALIDITY', 
+    credits: 1500, 
+    daily_limit: 50, 
+    triggers: 3, 
+    features: ['WhatsApp + Email', 'Campaign Builder', 'Basic AI Responses', '2 Automation Workflows'], 
+    btnText: 'DEPLOY' 
+  },
+  { 
+    id: PlanTier.GROWTH, 
+    name: 'GROWTH PLAN', 
+    bestFor: 'Scaling teams & agencies', 
+    price: 6500, 
+    setupFee: 25000, 
+    validity: '30 DAYS VALIDITY', 
+    credits: 6000, 
+    daily_limit: 200, 
+    triggers: 10, 
+    features: ['AI Image & Video', 'Advanced Automation', '10 Workflows', 'Omnichannel Support'], 
+    btnText: 'DEPLOY', 
+    popular: true 
+  },
+  { 
+    id: PlanTier.PRO, 
+    name: 'PROFESSIONAL PLAN', 
+    bestFor: 'High-volume sales operations', 
+    price: 15000, 
+    setupFee: 35000, 
+    validity: '30 DAYS VALIDITY', 
+    credits: 15000, 
+    daily_limit: 500, 
+    triggers: 25, 
+    features: ['AI Voice & Calls', 'Audit Logs & SLA', 'Role-based Access', 'Unlimited Workflows'], 
+    btnText: 'DEPLOY' 
+  },
+  { 
+    id: PlanTier.ENTERPRISE, 
+    name: 'ENTERPRISE PLAN', 
+    bestFor: 'Enterprise custom automation', 
+    price: 35500, 
+    setupFee: 50000, 
+    validity: '30 DAYS VALIDITY', 
+    credits: 40500, 
+    daily_limit: 1350, 
+    triggers: 999, 
+    features: ['Dedicated Pipelines', 'Custom Cost Rules', 'Admin Controls', 'Unlimited Everything'], 
+    btnText: 'DEPLOY' 
+  }
 ];
 
 const RECHARGE_PACKS = [
@@ -36,7 +98,7 @@ const RECHARGE_PACKS = [
   { id: 'pack_large', name: 'FUEL SCALE', credits: 10000, price: 12999, color: 'emerald' }
 ];
 
-const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
+const BillingManager: React.FC<BillingManagerProps> = ({ onActivate, onRecharge, globalBalance }) => {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [handshakeState, setHandshakeState] = useState<'idle' | 'awaiting_payment' | 'verifying' | 'success' | 'failed' | 'cancelled'>('idle');
   const [showCart, setShowCart] = useState(false);
@@ -44,9 +106,6 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
   const [cart, setCart] = useState<typeof PLAN_DETAILS[0] | null>(null);
   const [selectedRecharge, setSelectedRecharge] = useState<typeof RECHARGE_PACKS[0] | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  
-  // Simulated Wallet Balance
-  const [currentBalance, setCurrentBalance] = useState(1240);
 
   const addToCart = (plan: typeof PLAN_DETAILS[0]) => {
     setCart(plan);
@@ -135,7 +194,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
 
   const executeFinalActivation = () => {
     if (selectedRecharge) {
-      setCurrentBalance(prev => prev + selectedRecharge.credits);
+      onRecharge?.(selectedRecharge.credits);
       setHandshakeState('success');
       setSelectedRecharge(null);
     } else if (cart) {
@@ -200,7 +259,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                             <span className={i === logs.length - 1 ? 'text-white font-black' : ''}>{log}</span>
                          </div>
                       ))}
-                      {handshakeState === 'verifying' && <div className="w-2 h-4 bg-indigo-500 animate-pulse inline-block ml-2" />}
+                      {handshakeState === 'verifying' && <div className="w-2 h-4 bg-indigo-50 animate-pulse inline-block ml-2" />}
                    </div>
                  )}
               </main>
@@ -415,7 +474,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
             {PLAN_DETAILS.map((plan) => (
               <div 
                 key={plan.id} 
-                className={`relative flex flex-col group transition-all duration-500 min-h-[720px] rounded-[3.5rem] border bg-[#F8FAFC] overflow-visible ${
+                className={`relative flex flex-col group transition-all duration-500 rounded-[3.5rem] border bg-[#F8FAFC] overflow-visible ${
                   plan.popular ? 'border-[#F97316] ring-4 ring-orange-500/5 bg-white z-10 shadow-2xl scale-[1.02]' : 'border-slate-100 shadow-sm'
                 }`}
               >
@@ -430,11 +489,14 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                 <div className="p-5 xl:p-6 flex flex-col flex-1 relative z-10">
                   <div className="space-y-3 text-center mb-6">
                       <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#9BA3B5]">{plan.name}</h4>
-                      <div className="flex flex-col items-center">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic leading-tight">
+                         {plan.bestFor}
+                      </p>
+                      <div className="flex flex-col items-center pt-2">
                         <span className="text-2xl lg:text-3xl xl:text-4xl font-black text-[#0B1530] tracking-tighter leading-none">₹{plan.price.toLocaleString()}</span>
                       </div>
-                      <div className="inline-block px-3 py-1 bg-[#E0E7FF]/40 border border-[#C7D2FE]/60 rounded-xl">
-                        <p className="text-[7px] font-black text-[#5143E1] uppercase tracking-[0.1em]">SET-UP: ₹{plan.setupFee.toLocaleString()}</p>
+                      <div className="inline-block px-4 py-2 bg-[#E0E7FF]/40 border border-[#C7D2FE]/60 rounded-xl">
+                        <p className="text-[10px] font-black text-[#5143E1] uppercase tracking-[0.1em]">SET-UP: ₹{plan.setupFee.toLocaleString()}</p>
                       </div>
                       <p className="text-[8px] font-black text-[#9BA3B5] uppercase tracking-[0.2em] pt-1">{plan.validity}</p>
                   </div>
@@ -455,11 +517,16 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                               <span className="text-[7px] font-black uppercase tracking-widest text-[#9BA3B5]">OUTGOING</span>
                             </div>
                         </div>
+                        <div className="flex items-center gap-3 text-emerald-600">
+                            <div className="p-1 bg-emerald-50 rounded-lg"><Activity size={14} /></div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-black leading-tight tracking-tight">{plan.daily_limit} DAILY</span>
+                              <span className="text-[7px] font-black uppercase tracking-widest text-[#9BA3B5]">AI LIMIT</span>
+                            </div>
+                        </div>
                       </div>
 
-                      <div className="h-px bg-slate-100" />
-
-                      <div className="space-y-2.5 px-1">
+                      <div className="space-y-2.5 px-1 pt-2">
                         {plan.features.map((f, i) => (
                           <div key={i} className="flex items-start gap-2">
                             <div className="mt-1 flex items-center justify-center w-2.5 h-2.5 rounded-full bg-emerald-50 text-emerald-500 shrink-0">
@@ -507,7 +574,7 @@ const BillingManager: React.FC<BillingManagerProps> = ({ onActivate }) => {
                      <Activity size={18} className="text-emerald-400 animate-pulse" />
                      <div>
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Current Balance</p>
-                        <p className="text-xl font-black text-white leading-none">{currentBalance.toLocaleString()} Credits</p>
+                        <p className="text-xl font-black text-white leading-none">{globalBalance.toLocaleString()} Credits</p>
                      </div>
                   </div>
                   <p className="text-[#94A3B8] text-sm md:text-base font-medium italic opacity-60 leading-relaxed max-w-md hidden sm:block">

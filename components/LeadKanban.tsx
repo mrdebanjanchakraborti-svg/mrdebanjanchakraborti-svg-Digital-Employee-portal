@@ -1,7 +1,12 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { LeadStatus, LeadTemperature, LeadGrade } from '../types';
-import { MoreHorizontal, Star, MessageSquare, Flame, Sparkles, Activity, Snowflake, TrendingUp, DollarSign, UserCheck, Zap, Clock, AlertTriangle, BellRing } from 'lucide-react';
+import { 
+  MoreHorizontal, Star, MessageSquare, Flame, Sparkles, Activity, 
+  Snowflake, TrendingUp, DollarSign, UserCheck, Zap, Clock, 
+  AlertTriangle, BellRing, ShieldAlert, BrainCircuit, Loader2, 
+  Search, BarChart3, Timer
+} from 'lucide-react';
 
 interface KanbanLead {
   id: string;
@@ -13,8 +18,10 @@ interface KanbanLead {
   temperature: LeadTemperature;
   scenario?: string;
   lastSignal?: string;
+  lastActive?: string;
   interactionCount: number;
   requiresImmediateFollowup?: boolean;
+  needsRescore?: boolean;
   bant: {
     need: boolean;
     authority: boolean;
@@ -24,36 +31,49 @@ interface KanbanLead {
 }
 
 const LeadKanban: React.FC = () => {
+  const [scoringLeadId, setScoringLeadId] = useState<string | null>(null);
+
   const columns: { title: string; status: LeadStatus; icon?: any; colorClass?: string }[] = [
+    { title: 'Blitz: Instant Outreach', status: LeadStatus.ACTION_REQUIRED, icon: Flame, colorClass: 'bg-[#5143E1]' },
     { title: 'Critical / Urgent', status: LeadStatus.URGENT, icon: Zap, colorClass: 'bg-rose-600' },
-    { title: 'Immediate Follow-up', status: LeadStatus.FOLLOW_UP, icon: BellRing, colorClass: 'bg-amber-500' },
+    { title: 'AI Priority Alerts', status: LeadStatus.ATTENTION, icon: ShieldAlert, colorClass: 'bg-orange-600' },
     { title: 'Intelligence Queue', status: LeadStatus.NEW },
     { title: 'Active Contact', status: LeadStatus.CONTACTED },
     { title: 'Decision Makers', status: LeadStatus.QUALIFIED },
-    { title: 'Closed Revenue', status: LeadStatus.WON },
   ];
 
-  const leads: Record<string, KanbanLead[]> = {
-    [LeadStatus.URGENT]: [
-      { id: 'urgent_1', name: 'Rohan Kapoor', company: 'Kapoor Real Estate', score: 98, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'missed_call_recovery', interactionCount: 1, lastSignal: 'High Intensity Missed Call', bant: { need: true, authority: true, budget: false, timeline: 'Immediate' } },
+  const initialLeads: Record<string, KanbanLead[]> = {
+    [LeadStatus.ACTION_REQUIRED]: [
+      { id: 'blitz_1', name: 'Vikram Malhotra', company: 'Malhotra Tech', score: 99, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'high_intent_signal', interactionCount: 28, lastSignal: 'Downloaded Enterprise Deck', lastActive: '2m ago', requiresImmediateFollowup: true, bant: { need: true, authority: true, budget: true, timeline: 'Immediate' } },
     ],
-    [LeadStatus.FOLLOW_UP]: [
-      { id: 'fup_1', name: 'Ishita Gupta', company: 'Gupta & Sons', score: 92, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'pricing_objection', interactionCount: 12, lastSignal: 'Asked for discount', requiresImmediateFollowup: true, bant: { need: true, authority: true, budget: true, timeline: 'Immediate' } },
-      { id: 'fup_2', name: 'Aditya Varma', company: 'Varma Logistics', score: 91, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'lead_recovery', interactionCount: 4, lastSignal: 'No reply for 4h', requiresImmediateFollowup: true, bant: { need: true, authority: false, budget: false, timeline: 'Next Week' } },
+    [LeadStatus.URGENT]: [
+      { id: 'urgent_1', name: 'Rohan Kapoor', company: 'Kapoor Real Estate', score: 98, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'missed_call_recovery', interactionCount: 12, lastSignal: 'High Intensity Missed Call', lastActive: '15m ago', bant: { need: true, authority: true, budget: false, timeline: 'Immediate' } },
+    ],
+    [LeadStatus.ATTENTION]: [
+      { id: 'att_1', name: 'Kabir Singhania', company: 'Singhania Group', score: 96, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'high_intent_signal', interactionCount: 45, lastSignal: 'Viewed Pricing 4 times in 10m', lastActive: '10m ago', requiresImmediateFollowup: true, bant: { need: true, authority: true, budget: true, timeline: 'Immediate' } },
     ],
     [LeadStatus.NEW]: [
-      { id: '1', name: 'Alex Rivera', company: 'TechFlow', score: 25, grade: LeadGrade.COLD, priority: 'Medium', temperature: LeadTemperature.COLD, scenario: 'validation', interactionCount: 2, lastSignal: 'New Inbound', bant: { need: false, authority: false, budget: false, timeline: 'Unknown' } },
-      { id: '2', name: 'Samantha Reed', company: 'Global Solutions', score: 82, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.WARM, scenario: 'lead_recovery', interactionCount: 5, lastSignal: 'Replied: WhatsApp', bant: { need: true, authority: false, budget: false, timeline: 'Short-term' } },
+      { id: '1', name: 'Alex Rivera', company: 'TechFlow', score: 12, grade: LeadGrade.COLD, priority: 'Medium', temperature: LeadTemperature.COLD, scenario: 'validation', interactionCount: 2, lastSignal: 'New Inbound', lastActive: '1h ago', needsRescore: true, bant: { need: false, authority: false, budget: false, timeline: 'Unknown' } },
+      { id: '2', name: 'Samantha Reed', company: 'Global Solutions', score: 82, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.WARM, scenario: 'lead_recovery', interactionCount: 18, lastSignal: 'Replied: WhatsApp', lastActive: '45m ago', bant: { need: true, authority: false, budget: false, timeline: 'Short-term' } },
+      { id: 'low_1', name: 'Tushar Garg', company: 'Garg Traders', score: 5, grade: LeadGrade.COLD, priority: 'Low', temperature: LeadTemperature.COLD, interactionCount: 1, lastSignal: 'Just Ingested', lastActive: '3h ago', needsRescore: true, bant: { need: false, authority: false, budget: false, timeline: 'Unknown' } },
     ],
     [LeadStatus.CONTACTED]: [
-      { id: '3', name: 'Marcus Chen', company: 'Nexus IT', score: 55, grade: LeadGrade.WARM, priority: 'Medium', temperature: LeadTemperature.WARM, scenario: 'pricing_objection', interactionCount: 8, lastSignal: 'Asked for Pricing', bant: { need: true, authority: true, budget: false, timeline: 'Immediate' } },
+      { id: '3', name: 'Marcus Chen', company: 'Nexus IT', score: 55, grade: LeadGrade.WARM, priority: 'Medium', temperature: LeadTemperature.WARM, scenario: 'pricing_objection', interactionCount: 8, lastSignal: 'Asked for Pricing', lastActive: '5h ago', bant: { need: true, authority: true, budget: false, timeline: 'Immediate' } },
     ],
     [LeadStatus.QUALIFIED]: [
-      { id: '4', name: 'Elena Gilbert', company: 'Mystic Falls RE', score: 94, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'closing_mode', interactionCount: 14, lastSignal: 'Buying Signal: Call', bant: { need: true, authority: true, budget: true, timeline: '15 days' } },
+      { id: '4', name: 'Elena Gilbert', company: 'Mystic Falls RE', score: 94, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'closing_mode', interactionCount: 32, lastSignal: 'Buying Signal: Call', lastActive: '1h ago', bant: { need: true, authority: true, budget: true, timeline: '15 days' } },
     ],
-    [LeadStatus.WON]: [
-      { id: '5', name: 'Stefan Salvatore', company: 'Bloodlines LLC', score: 100, grade: LeadGrade.HOT, priority: 'High', temperature: LeadTemperature.HOT, scenario: 'post_sale', interactionCount: 20, lastSignal: 'Contract Won', bant: { need: true, authority: true, budget: true, timeline: 'Complete' } },
-    ],
+  };
+
+  const [leads, setLeads] = useState(initialLeads);
+
+  const handleScorePulse = (leadId: string) => {
+    setScoringLeadId(leadId);
+    setTimeout(() => {
+      setScoringLeadId(null);
+      const newScore = 75 + Math.floor(Math.random() * 20);
+      alert(`AI Pulse Complete. Intent detected: "Exploring Scale". Score updated to ${newScore}.`);
+    }, 2000);
   };
 
   const getGradeBadge = (grade: LeadGrade) => {
@@ -68,34 +88,45 @@ const LeadKanban: React.FC = () => {
   };
 
   return (
-    <div className="flex gap-6 h-full min-w-[1800px] animate-in fade-in duration-500 overflow-x-auto pb-10 custom-scrollbar">
+    <div className="flex gap-6 h-full min-w-[2100px] animate-in fade-in duration-500 overflow-x-auto pb-10 custom-scrollbar">
+      <style>{`
+        @keyframes flash-urgent {
+          0%, 100% { border-color: rgba(244, 63, 94, 0.4); box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); background-color: #fff; }
+          50% { border-color: rgba(244, 63, 94, 1); box-shadow: 0 0 20px 4px rgba(244, 63, 94, 0.15); background-color: #fffafb; }
+        }
+        .animate-flash-urgent {
+          animation: flash-urgent 1.5s infinite ease-in-out;
+          border-width: 2px;
+        }
+      `}</style>
       {columns.map((col) => {
-        const isPriorityCol = col.status === LeadStatus.URGENT || col.status === LeadStatus.FOLLOW_UP;
+        const isPriorityCol = col.status === LeadStatus.URGENT || col.status === LeadStatus.ATTENTION || col.status === LeadStatus.ACTION_REQUIRED;
         
         return (
-          <div key={col.status} className="flex-1 flex flex-col min-w-[320px]">
-            <div className={`flex items-center justify-between mb-4 px-4 py-3 rounded-2xl ${col.colorClass ? `${col.colorClass} text-white shadow-lg` : 'bg-transparent text-slate-900'}`}>
+          <div key={col.status} className="flex-1 flex flex-col min-w-[340px]">
+            <div className={`flex items-center justify-between mb-4 px-4 py-4 rounded-[1.5rem] ${col.colorClass ? `${col.colorClass} text-white shadow-xl` : 'bg-slate-50 text-slate-900 border border-slate-200'}`}>
               <h3 className="font-black flex items-center gap-2 text-sm tracking-tight uppercase">
-                {col.icon && <col.icon size={16} className={isPriorityCol ? 'animate-pulse' : ''} />}
+                {col.icon && <col.icon size={18} className={isPriorityCol ? 'animate-pulse' : ''} />}
                 {col.title}
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isPriorityCol ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>
                   {(leads[col.status] || []).length}
                 </span>
               </h3>
               <button className={`${isPriorityCol ? 'text-white/60' : 'text-slate-400'} hover:text-slate-600`}>
-                <MoreHorizontal size={18} />
+                <MoreHorizontal size={20} />
               </button>
             </div>
 
-            <div className={`flex-1 ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-50/30' : 'bg-amber-50/30') : 'bg-slate-100/50'} rounded-[2.5rem] p-4 space-y-4 overflow-y-auto border ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-100' : 'border-amber-100') : 'border-slate-200/50'}`}>
+            <div className={`flex-1 ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-50/30' : col.status === LeadStatus.ACTION_REQUIRED ? 'bg-indigo-50/30' : 'bg-orange-50/30') : 'bg-slate-100/50'} rounded-[3rem] p-4 space-y-4 overflow-y-auto border ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-100' : col.status === LeadStatus.ACTION_REQUIRED ? 'border-indigo-100' : 'border-orange-100') : 'border-slate-200/50'}`}>
               {(leads[col.status] || []).map((lead) => {
                 const isVeryHighIntent = lead.score > 90 || lead.requiresImmediateFollowup;
-                
+                const isScoringInProgress = scoringLeadId === lead.id;
+                const showScoringWarning = lead.needsRescore || lead.score < 20;
+                const isUrgent = lead.requiresImmediateFollowup;
+                const isHighEngagement = lead.interactionCount > 20;
+
                 return (
-                  <div key={lead.id} className={`bg-white p-6 rounded-3xl border transition-all group cursor-grab active:cursor-grabbing relative overflow-hidden ${isVeryHighIntent ? (col.status === LeadStatus.URGENT ? 'border-rose-200 shadow-xl shadow-rose-500/5 ring-1 ring-rose-500/10' : 'border-amber-200 shadow-xl shadow-amber-500/5 ring-1 ring-amber-500/10') : 'border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1'}`}>
-                    {isVeryHighIntent && (
-                      <div className={`absolute top-0 right-0 w-16 h-16 ${col.status === LeadStatus.URGENT ? 'bg-rose-500/10' : 'bg-amber-500/10'} rounded-bl-[3rem] -mr-4 -mt-4 blur-xl`} />
-                    )}
+                  <div key={lead.id} className={`bg-white p-6 rounded-[2.5rem] border transition-all group relative overflow-hidden ${isUrgent ? 'animate-flash-urgent border-rose-500' : isVeryHighIntent ? (col.status === LeadStatus.URGENT ? 'border-rose-200 shadow-xl shadow-rose-500/5 ring-1 ring-rose-500/10' : 'border-indigo-200 shadow-xl shadow-indigo-500/5 ring-1 ring-indigo-500/10') : showScoringWarning ? 'border-amber-100 bg-amber-50/20' : 'border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1'}`}>
                     
                     <div className="flex items-start justify-between mb-4 relative z-10">
                       <div className="flex flex-wrap gap-2">
@@ -106,13 +137,13 @@ const LeadKanban: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className={`flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-xl border ${lead.score > 90 ? (col.status === LeadStatus.URGENT ? 'bg-rose-600 text-white border-rose-600' : 'bg-amber-600 text-white border-amber-600') + ' shadow-lg animate-pulse' : lead.score > 80 ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-slate-50 text-slate-900 border-slate-100'}`}>
+                      <div className={`flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-xl border ${lead.score > 90 ? (col.status === LeadStatus.URGENT ? 'bg-rose-600 text-white border-rose-600' : 'bg-indigo-600 text-white border-indigo-600') + ' shadow-lg animate-pulse' : lead.score > 80 ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-slate-50 text-slate-900 border-slate-100'}`}>
                         <Activity size={10} />
                         {lead.score}
                       </div>
                     </div>
                     
-                    <h4 className="font-bold text-slate-900 text-lg group-hover:text-indigo-600 transition-colors leading-tight mb-0.5">{lead.name}</h4>
+                    <h4 className={`text-lg group-hover:text-indigo-600 transition-colors leading-tight mb-0.5 ${isUrgent ? 'font-black text-rose-700' : 'font-bold text-slate-900'}`}>{lead.name}</h4>
                     <p className="text-xs text-slate-500 font-medium tracking-tight mb-4">{lead.company}</p>
 
                     <div className="grid grid-cols-4 gap-2 mb-4">
@@ -130,35 +161,77 @@ const LeadKanban: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className={`${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-50/50' : 'bg-amber-50/50') : 'bg-slate-50'} p-3 rounded-2xl mb-4 border ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-100' : 'border-amber-100') : 'border-slate-100'}`}>
+                    {showScoringWarning && !isScoringInProgress && (
+                      <div className="mb-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex flex-col gap-3">
+                         <div className="flex items-center gap-2 text-amber-700">
+                            <AlertTriangle size={14} />
+                            <p className="text-[10px] font-black uppercase tracking-widest">Incomplete Intelligence</p>
+                         </div>
+                         <button 
+                          onClick={() => handleScorePulse(lead.id)}
+                          className="w-full py-2.5 bg-white border border-amber-200 text-amber-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-amber-600 hover:text-white transition-all shadow-sm flex items-center justify-center gap-2"
+                         >
+                            <BrainCircuit size={14} /> Run Scoring Protocol
+                         </button>
+                      </div>
+                    )}
+
+                    {isScoringInProgress && (
+                      <div className="mb-4 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex flex-col items-center justify-center gap-2 animate-pulse">
+                         <Loader2 size={24} className="text-indigo-600 animate-spin" />
+                         <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Employee Analysis Active...</p>
+                      </div>
+                    )}
+
+                    <div className={`${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-50/50' : col.status === LeadStatus.ACTION_REQUIRED ? 'bg-indigo-50/50' : col.status === LeadStatus.ATTENTION ? 'bg-orange-50/50' : 'bg-slate-50') : 'bg-slate-50'} p-3 rounded-2xl mb-4 border ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-100' : col.status === LeadStatus.ACTION_REQUIRED ? 'border-indigo-100' : 'border-orange-100') : 'border-slate-100'}`}>
                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Last Intelligence Signal</p>
-                       <p className={`text-[11px] font-bold flex items-center gap-1.5 italic ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'text-rose-700' : 'text-amber-700') : 'text-slate-700'}`}>
-                          {isPriorityCol ? <AlertTriangle size={12} className={col.status === LeadStatus.URGENT ? 'text-rose-500' : 'text-amber-500'} /> : <TrendingUp size={12} className="text-emerald-500" />} {lead.lastSignal}
+                       <p className={`text-[11px] font-bold flex items-center gap-1.5 italic ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'text-rose-700' : col.status === LeadStatus.ACTION_REQUIRED ? 'text-indigo-700' : 'text-orange-700') : 'text-slate-700'}`}>
+                          {isPriorityCol ? <AlertTriangle size={12} className={col.status === LeadStatus.URGENT ? 'text-rose-500' : col.status === LeadStatus.ACTION_REQUIRED ? 'text-indigo-500' : 'text-orange-500'} /> : <TrendingUp size={12} className="text-emerald-500" />} {lead.lastSignal || 'No signals recorded'}
                        </p>
+                    </div>
+
+                    {/* Prominent Interaction Engagement Tracking */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-2xl mb-4 shadow-inner">
+                       <div className="flex flex-col">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Interaction Pulse</p>
+                          <div className="flex items-center gap-2">
+                             <MessageSquare size={14} className={isHighEngagement ? 'text-indigo-600' : 'text-slate-400'} />
+                             <span className={`text-sm font-black ${isHighEngagement ? 'text-indigo-600' : 'text-slate-700'}`}>{lead.interactionCount} <span className="text-[10px] opacity-60">Hits</span></span>
+                          </div>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Last Active</p>
+                          <div className="flex items-center gap-1.5 justify-end">
+                             <Timer size={12} className="text-slate-400" />
+                             <span className="text-[10px] font-bold text-slate-600">{lead.lastActive || 'N/A'}</span>
+                          </div>
+                       </div>
                     </div>
 
                     <div className="flex items-center justify-between border-t border-slate-50 pt-4">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-xl ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-600' : 'bg-amber-500') : 'bg-slate-900'} flex items-center justify-center text-[10px] font-black text-white shadow-xl`}>
+                        <div className={`w-8 h-8 rounded-xl ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'bg-rose-600' : col.status === LeadStatus.ACTION_REQUIRED ? 'bg-indigo-600' : 'bg-orange-600') : 'bg-slate-900'} flex items-center justify-center text-[10px] font-black text-white shadow-xl`}>
                           {lead.name.substring(0, 2).toUpperCase()}
                         </div>
+                        {isHighEngagement && (
+                          <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-lg text-[8px] font-black text-indigo-600 uppercase">
+                            <TrendingUp size={10} /> Velocity
+                          </div>
+                        )}
                         {lead.requiresImmediateFollowup && (
-                          <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                          <div className={`w-2 h-2 rounded-full animate-ping ${col.status === LeadStatus.ACTION_REQUIRED ? 'bg-indigo-500' : 'bg-rose-500'}`} />
                         )}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <MessageSquare size={14} className="group-hover:text-indigo-500 transition-colors" />
-                          <span className="text-[10px] font-black">{lead.interactionCount}</span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-slate-300 group-hover:text-indigo-600 transition-colors">
+                        <BarChart3 size={14} />
                       </div>
                     </div>
                   </div>
                 );
               })}
               
-              <button className={`w-full py-5 border-2 border-dashed rounded-[2.5rem] text-[10px] font-black transition-all uppercase tracking-[0.2em] bg-white/50 ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-200 text-rose-400 hover:border-rose-400 hover:text-rose-600' : 'border-amber-200 text-amber-400 hover:border-amber-400 hover:text-amber-600') : 'border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600'}`}>
-                + Add Lead signal
+              <button className={`w-full py-6 border-2 border-dashed rounded-[2.5rem] text-[10px] font-black transition-all uppercase tracking-[0.2em] bg-white/50 ${isPriorityCol ? (col.status === LeadStatus.URGENT ? 'border-rose-200 text-rose-400 hover:border-rose-400 hover:text-rose-600' : col.status === LeadStatus.ACTION_REQUIRED ? 'border-indigo-200 text-indigo-400 hover:border-indigo-400 hover:text-indigo-600' : 'border-orange-200 text-orange-400 hover:border-orange-400 hover:text-orange-600') : 'border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600'}`}>
+                + Inject Lead Signal
               </button>
             </div>
           </div>

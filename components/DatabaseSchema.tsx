@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS public.outgoing_triggers (
 );
 
 -- 3️⃣ FINANCIAL RPC: can_create_outgoing_trigger()
--- Logic: Plan limits enforcement (Free = 0, Starter = 2, Growth = 10, Pro = 25)
+-- Logic: Plan limits enforcement based on latest specs
+-- Limits: Free = 1, Starter = 3, Growth = 10, Pro = 25, Ent = 999
 CREATE OR REPLACE FUNCTION public.can_create_outgoing_trigger(p_workspace_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -50,8 +51,8 @@ BEGIN
   SELECT count(*) INTO v_count FROM public.outgoing_triggers WHERE workspace_id = p_workspace_id;
   
   v_limit := CASE 
-    WHEN v_plan = 'free' THEN 0
-    WHEN v_plan = 'starter' THEN 2
+    WHEN v_plan = 'free' THEN 1
+    WHEN v_plan = 'starter' THEN 3
     WHEN v_plan = 'growth' THEN 10
     WHEN v_plan = 'pro' THEN 25
     ELSE 999 -- Enterprise
@@ -63,7 +64,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 4️⃣ EXECUTION RPC: authorize_pulse()
 -- Logic: Hard check for active sub, overdue state, and AI credit wallet.
--- Supports 'trigger_hit' and 'outgoing_dispatch' actions.
+-- Daily Limits: Free: 20, Starter: 50, Growth: 200, Pro: 500, Ent: 1350
 CREATE OR REPLACE FUNCTION public.authorize_pulse(p_trigger_id UUID, p_action_type TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -103,9 +104,10 @@ BEGIN
     v_daily_used := 0;
   END IF;
 
-  -- 🛑 GUARD: Basic Solvency
-  IF NOT v_active OR v_overdue OR v_credits < v_cost THEN
-    RETURN jsonb_build_object('success', false, 'reason', 'Solvency Failure (Overdue or No Fuel)');
+  -- 🛑 GUARD: Basic Solvency & Daily Cap
+  -- Daily Caps: Free: 20, Starter: 50, Growth: 200, Pro: 500, Enterprise: 1350
+  IF NOT v_active OR v_overdue OR v_credits < v_cost OR (v_daily_used + v_cost) > v_daily_limit THEN
+    RETURN jsonb_build_object('success', false, 'reason', 'Protocol Violation (Overdue, No Fuel, or Daily Cap)');
   END IF;
 
   -- Commitment: Ledger Burn
@@ -167,7 +169,7 @@ CREATE POLICY "Outgoing Triggers: Owner isolation" ON public.outgoing_triggers F
         <div className="px-10 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <div className="flex items-center gap-4">
             <Terminal size={18} className="text-slate-400" />
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Binary commerce protocol v2.6</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Binary commerce protocol v2.8</span>
           </div>
         </div>
         <div className="p-0 bg-slate-950 overflow-hidden relative">
