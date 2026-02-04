@@ -1,136 +1,112 @@
+
 import React from 'react';
-import { Copy, CheckCircle, Shield, Code, Zap, Lock, Terminal, Database, Server, Key, Eye, ShieldCheck, Globe } from 'lucide-react';
+import { Copy, CheckCircle, Shield, Code, Zap, Terminal, ShieldCheck } from 'lucide-react';
 
 const DatabaseSchema: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlCode = `-- DIGITAL EMPLOYEE MASTER SCHEMA (FULL-LOOP TRIGGER EXTENSION)
--- 🛠 UPDATED INFRASTRUCTURE FOR OUTBOUND BROADCASTS & RETRY PULSE
+  const sqlCode = `-- DIGITAL EMPLOYEE ONBOARDING LEDGER (v3.6)
+-- 🛠 PERSISTENCE INFRASTRUCTURE FOR STEPS 1-7 (COMPANY -> ACTIVATE)
 
--- 1️⃣ PULSE TRIGGERS (INCOMING SIGNAL LINKS)
-CREATE TABLE IF NOT EXISTS public.triggers (
+-- 1️⃣ STEP 01 & 07: WORKSPACE REGISTRY
+-- Manages Company Identity (Step 1) and Final Activation (Step 7)
+CREATE TABLE IF NOT EXISTS public.workspaces (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID REFERENCES public.workspaces(id) NOT NULL,
+  owner_id UUID REFERENCES auth.users(id) NOT NULL,
   name TEXT NOT NULL,
-  type TEXT CHECK (type IN ('lead_ingestion','campaign_event','external_crm_push','custom_webhook')),
-  status TEXT CHECK (status IN ('active','paused','error')) DEFAULT 'active',
-  webhook_url TEXT UNIQUE NOT NULL,
-  secret TEXT NOT NULL,
-  event_type TEXT DEFAULT 'pulse_hit',
-  usage_count INT DEFAULT 0,
+  industry TEXT,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'onboarding', 'active', 'suspended')),
+  onboarding_step INT DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2️⃣ STEP 02: AI BRAIN CONFIGURATION
+-- Stores the intelligence parameters for the Digital Employee
+CREATE TABLE IF NOT EXISTS public.ai_brain_configs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE UNIQUE,
+  focus_area TEXT, -- e.g., 'Sales', 'Customer Support'
+  system_instruction TEXT, -- The Gemini System Prompt
+  knowledge_base_urls TEXT[], -- Linked URLs for training
+  temperature FLOAT DEFAULT 0.7,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2️⃣ OUTBOUND BROADCASTS (OUTGOING TRIGGERS)
-CREATE TABLE IF NOT EXISTS public.outgoing_triggers (
+-- 3️⃣ STEP 03 & 04: OMNICHANNEL INTEGRATIONS
+-- Manages WhatsApp (Step 3) and Voice (Step 4) Pulse connections
+CREATE TABLE IF NOT EXISTS public.integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID REFERENCES public.workspaces(id) NOT NULL,
-  name TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  destination_type TEXT CHECK (destination_type IN ('n8n', 'custom_webhook', 'slack', 'google_apps_script')),
-  destination_url TEXT NOT NULL,
-  secret TEXT NOT NULL,
-  status TEXT CHECK (status IN ('active','paused','error')) DEFAULT 'active',
-  retry_policy TEXT DEFAULT 'instant',
-  usage_count INT DEFAULT 0,
-  last_dispatch_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now()
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL CHECK (channel IN ('whatsapp', 'voice', 'email', 'sms')),
+  provider TEXT, -- e.g., 'Twilio', 'Vapi', 'Meta'
+  identifier TEXT, -- Phone Number or API Key ID
+  config JSONB DEFAULT '{}'::jsonb,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'error')),
+  UNIQUE(workspace_id, channel)
 );
 
--- 3️⃣ FINANCIAL RPC: can_create_outgoing_trigger()
--- Logic: Plan limits enforcement based on latest specs
--- Limits: Free = 1, Starter = 3, Growth = 10, Pro = 25, Ent = 999
-CREATE OR REPLACE FUNCTION public.can_create_outgoing_trigger(p_workspace_id UUID)
-RETURNS BOOLEAN AS $$
-DECLARE
-  v_plan TEXT;
-  v_count INT;
-  v_limit INT;
-BEGIN
-  SELECT plan_tier INTO v_plan FROM public.subscriptions WHERE user_id = p_workspace_id;
-  SELECT count(*) INTO v_count FROM public.outgoing_triggers WHERE workspace_id = p_workspace_id;
-  
-  v_limit := CASE 
-    WHEN v_plan = 'free' THEN 1
-    WHEN v_plan = 'starter' THEN 3
-    WHEN v_plan = 'growth' THEN 10
-    WHEN v_plan = 'pro' THEN 25
-    ELSE 999 -- Enterprise
-  END;
+-- 4️⃣ STEP 05: TEAM COLLABORATION
+-- Manages Workspace Access and Identity Handshaking
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_email TEXT NOT NULL,
+  role TEXT DEFAULT 'member' CHECK (role IN ('admin', 'member', 'viewer')),
+  invited_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(workspace_id, user_email)
+);
 
-  RETURN v_count < v_limit;
+-- 5️⃣ STEP 06: FINANCIAL SUBSCRIPTION
+-- Authorizes Workforce scale and AI Credit fuel
+CREATE TABLE IF NOT EXISTS public.subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE UNIQUE,
+  plan_tier TEXT DEFAULT 'free' CHECK (plan_tier IN ('free', 'starter', 'growth', 'pro', 'enterprise')),
+  credits_balance INT DEFAULT 200,
+  overdue BOOLEAN DEFAULT false,
+  expires_at TIMESTAMPTZ DEFAULT (now() + interval '30 days'),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6️⃣ ROW LEVEL SECURITY (RLS) GOVERNANCE
+ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_brain_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.integrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+
+-- Governance Policy: Owners manage their own ecosystem
+CREATE POLICY "Owners manage workspace" ON public.workspaces
+FOR ALL TO authenticated USING (auth.uid() = owner_id);
+
+CREATE POLICY "Owners manage brain" ON public.ai_brain_configs
+FOR ALL TO authenticated USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+CREATE POLICY "Owners manage integrations" ON public.integrations
+FOR ALL TO authenticated USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+CREATE POLICY "Owners manage subscriptions" ON public.subscriptions
+FOR SELECT TO authenticated USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+-- 7️⃣ AUTOMATION: IDENTITY SYNC ON WORKSPACE CREATE
+-- Automatically initializes a free subscription pulse for new entities
+CREATE OR REPLACE FUNCTION public.init_workspace_pulse()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.subscriptions (workspace_id, plan_tier, credits_balance)
+  VALUES (NEW.id, 'free', 200);
+  
+  INSERT INTO public.ai_brain_configs (workspace_id, focus_area)
+  VALUES (NEW.id, 'General Sales');
+  
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4️⃣ EXECUTION RPC: authorize_pulse()
--- Logic: Hard check for active sub, overdue state, and AI credit wallet.
--- Daily Limits: Free: 20, Starter: 50, Growth: 200, Pro: 500, Ent: 1350
-CREATE OR REPLACE FUNCTION public.authorize_pulse(p_trigger_id UUID, p_action_type TEXT)
-RETURNS JSONB AS $$
-DECLARE
-  v_workspace_id UUID;
-  v_active BOOLEAN;
-  v_overdue BOOLEAN;
-  v_credits INT;
-  v_daily_limit INT;
-  v_daily_used INT;
-  v_last_reset TIMESTAMPTZ;
-  v_cost INT;
-BEGIN
-  -- Search incoming or outgoing registry
-  SELECT workspace_id INTO v_workspace_id FROM public.triggers WHERE id = p_trigger_id;
-  IF v_workspace_id IS NULL THEN
-     SELECT workspace_id INTO v_workspace_id FROM public.outgoing_triggers WHERE id = p_trigger_id;
-  END IF;
-  
-  SELECT (status = 'active'), overdue, credits_balance, daily_credits_limit, credits_used_today, last_reset_at
-  INTO v_active, v_overdue, v_credits, v_daily_limit, v_daily_used, v_last_reset
-  FROM public.subscriptions WHERE user_id = v_workspace_id;
-
-  -- AI Credit Pricing Matrix
-  v_cost := CASE
-    WHEN p_action_type IN ('trigger_hit', 'outgoing_dispatch') THEN 1
-    WHEN p_action_type = 'lead_score' THEN 2
-    WHEN p_action_type = 'ai_message' THEN 3
-    WHEN p_action_type = 'image_gen' THEN 5
-    WHEN p_action_type = 'video_gen' THEN 10
-    WHEN p_action_type = 'voice_call' THEN 15
-    ELSE 1
-  END;
-
-  -- Temporal Daily Reset
-  IF v_last_reset < date_trunc('day', now()) THEN
-    UPDATE public.subscriptions SET credits_used_today = 0, last_reset_at = now() WHERE user_id = v_workspace_id;
-    v_daily_used := 0;
-  END IF;
-
-  -- 🛑 GUARD: Basic Solvency & Daily Cap
-  -- Daily Caps: Free: 20, Starter: 50, Growth: 200, Pro: 500, Enterprise: 1350
-  IF NOT v_active OR v_overdue OR v_credits < v_cost OR (v_daily_used + v_cost) > v_daily_limit THEN
-    RETURN jsonb_build_object('success', false, 'reason', 'Protocol Violation (Overdue, No Fuel, or Daily Cap)');
-  END IF;
-
-  -- Commitment: Ledger Burn
-  UPDATE public.subscriptions 
-  SET credits_balance = credits_balance - v_cost,
-      credits_used_today = credits_used_today + v_cost
-  WHERE user_id = v_workspace_id;
-  
-  -- Identity Mapping: Update trigger usage
-  IF p_action_type = 'outgoing_dispatch' THEN
-     UPDATE public.outgoing_triggers SET usage_count = usage_count + 1, last_dispatch_at = now() WHERE id = p_trigger_id;
-  END IF;
-
-  RETURN jsonb_build_object('success', true, 'remaining_fuel', v_credits - v_cost);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 5️⃣ RLS POLICIES (ISOLATION)
-ALTER TABLE public.outgoing_triggers ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Outgoing Triggers: Owner isolation" ON public.outgoing_triggers FOR ALL USING (
-  workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid())
-);
+CREATE TRIGGER on_workspace_created
+  AFTER INSERT ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.init_workspace_pulse();
 `;
 
   const handleCopy = () => {
@@ -148,10 +124,10 @@ CREATE POLICY "Outgoing Triggers: Owner isolation" ON public.outgoing_triggers F
               <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl">
                 <ShieldCheck size={28} className="text-white" />
               </div>
-              <h2 className="text-4xl font-black tracking-tight uppercase">Infrastructure Ledger</h2>
+              <h2 className="text-4xl font-black tracking-tight uppercase">Onboarding Pulse v3.6</h2>
             </div>
-            <p className="text-slate-400 text-lg max-w-2xl leading-relaxed font-medium">
-              Enterprise-grade PostgreSQL schema with **Full-Loop Trigger** and **Sign-Validation** extensions.
+            <p className="text-slate-400 text-lg max-w-2xl leading-relaxed font-medium italic">
+              Persist the complete **7-Step Lifecycle**. From Step 01 (Company) to Step 07 (Global Activation).
             </p>
           </div>
           <button 
@@ -169,7 +145,7 @@ CREATE POLICY "Outgoing Triggers: Owner isolation" ON public.outgoing_triggers F
         <div className="px-10 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <div className="flex items-center gap-4">
             <Terminal size={18} className="text-slate-400" />
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Binary commerce protocol v2.8</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Orchestration Protocol v3.6</span>
           </div>
         </div>
         <div className="p-0 bg-slate-950 overflow-hidden relative">

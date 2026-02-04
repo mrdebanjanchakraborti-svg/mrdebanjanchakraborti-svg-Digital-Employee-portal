@@ -7,7 +7,8 @@ import {
   Activity, Star, Layers, Code, ShieldAlert, AlertTriangle, 
   ArrowRight, PieChart, Award, DollarSign, Crown, UserCircle,
   Archive, Rocket, ChevronUp, Lock, Radio, PlayCircle, History, Share, HeartPulse,
-  Plus as PlusIcon, Wallet, FileText, Receipt, Timer, LogOut
+  Plus as PlusIcon, Wallet, FileText, Receipt, Timer, LogOut, Database,
+  Loader2, X, CheckCircle2, RefreshCw, AlertCircle
 } from 'lucide-react';
 import LeadKanban from './components/LeadKanban';
 import LeadAnalytics from './components/LeadAnalytics';
@@ -41,6 +42,7 @@ import OutgoingTriggerManager from './components/OutgoingTriggerManager';
 import WalletLedger from './components/WalletLedger';
 import SubscriptionLedger from './components/SubscriptionLedger';
 import { UserRole, PlanTier, SubscriptionStatus, SubscriptionOrder } from './types';
+import { supabase, checkSupabaseConnection } from './supabase';
 
 interface NavigationItem {
   id: string;
@@ -48,7 +50,7 @@ interface NavigationItem {
   icon: any;
   role?: UserRole;
   badge?: number;
-  isCore?: boolean; // Always accessible even if expired
+  isCore?: boolean; 
 }
 
 interface NavigationSection {
@@ -57,6 +59,8 @@ interface NavigationSection {
 }
 
 const App: React.FC = () => {
+  const [session, setSession] = useState<any>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isOnboardingComplete, setIsOnboardingComplete] = useState(false);
   const [isActivated, setIsActivated] = useState(false); 
@@ -65,6 +69,8 @@ const App: React.FC = () => {
   const [isCampaignBuilderOpen, setIsCampaignBuilderOpen] = useState(false);
   const [isPostComposerOpen, setIsPostComposerOpen] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
+  const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean | null>(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   
   const [subscription, setSubscription] = useState({
     tier: PlanTier.FREE, 
@@ -75,6 +81,51 @@ const App: React.FC = () => {
   });
 
   const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
+
+  // Auth Initialization & Listener
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setIsAuthenticated(!!session);
+      } catch (err) {
+        console.error("Auth session fetch failure:", err);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setIsAuthenticated(!!session);
+      
+      // Handle the landing from a recovery email or signed_in state
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowResetPasswordModal(true);
+      }
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setIsAuthenticated(true);
+      }
+      if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+        setSession(null);
+      }
+    });
+
+    return () => authListener.unsubscribe();
+  }, []);
+
+  // Check Supabase connection health
+  useEffect(() => {
+    const checkConn = async () => {
+      const online = await checkSupabaseConnection();
+      setIsSupabaseOnline(online);
+    };
+    checkConn();
+  }, []);
 
   // Calculate if the Free Tier is expired
   const isExpired = useMemo(() => {
@@ -111,10 +162,19 @@ const App: React.FC = () => {
     }
   }, [subscription.credits, subscription.expiresAt, isActivated, orders]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsAuthenticated(false);
-    // Optionally clear temporary session data here if needed
   };
+
+  if (isAuthChecking) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#05070A] text-white">
+        <Loader2 className="animate-spin text-[#5143E1] mb-4" size={48} />
+        <p className="text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">Initializing Identity Handshake</p>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
@@ -193,7 +253,6 @@ const App: React.FC = () => {
     expiryDate.setDate(expiryDate.getDate() + validityDays);
     const expiryStr = expiryDate.toISOString().split('T')[0];
 
-    // Generate Order Record for Audit Ledger
     const newOrder: SubscriptionOrder = {
       id: Math.random().toString(36).substr(2, 9).toUpperCase(),
       order_date: new Date().toISOString(),
@@ -232,7 +291,6 @@ const App: React.FC = () => {
   const isTabLocked = (itemId: string) => {
     const item = navigation.flatMap(g => g.items).find(i => i.id === itemId);
     if (!item) return false;
-    // Expired Free tier only allows "Core" items
     if (isExpired && !item.isCore) return true;
     return false;
   };
@@ -244,6 +302,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-white text-slate-900 font-sans relative overflow-hidden">
+      {/* PASSWORD RESET MODAL */}
+      {showResetPasswordModal && (
+        <ResetPasswordModal onClose={() => setShowResetPasswordModal(false)} />
+      )}
+
       {/* GLOBAL BANNER */}
       {!isActivated ? (
         <div className="absolute top-0 left-0 right-0 h-[60px] bg-[#5143E1] text-white z-[100] flex items-center justify-center gap-6 px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
@@ -311,11 +374,26 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-6 border-t border-slate-50 bg-slate-50/30 space-y-4">
+          <div className="flex items-center justify-between px-4 py-2 bg-white border border-slate-100 rounded-xl shadow-sm mb-2">
+            <div className="flex items-center gap-2">
+              <Database size={12} className={isSupabaseOnline ? 'text-emerald-500' : 'text-slate-300'} />
+              <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Database Pulse</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${isSupabaseOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span className={`text-[8px] font-black uppercase tracking-widest ${isSupabaseOnline ? 'text-emerald-600' : 'text-slate-400'}`}>
+                {isSupabaseOnline === null ? 'Syncing' : isSupabaseOnline ? 'Online' : 'Offline'}
+              </span>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3 px-4 py-4 bg-white border border-slate-100 rounded-3xl shadow-sm">
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-700 font-black border border-indigo-100 text-xs md:text-sm shadow-inner shrink-0">JD</div>
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-700 font-black border border-indigo-100 text-xs md:text-sm shadow-inner shrink-0">
+               {session?.user?.email?.substring(0, 2).toUpperCase() || 'ID'}
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">Founders Hub</p>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{isActivated ? subscription.credits.toLocaleString() : 0} Cr</p>
+              <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">Identity Handshake</p>
+              <p className="text-[8px] font-black text-slate-400 truncate mt-0.5">{session?.user?.email}</p>
             </div>
             <button 
               onClick={handleLogout}
@@ -383,7 +461,7 @@ const App: React.FC = () => {
                 {activeTab === 'subscription-ledger' && <SubscriptionLedger externalOrders={orders} />}
                 {activeTab === 'reporting' && <ReportingManager />}
                 {activeTab === 'partner' && <PartnerHub />}
-                {activeTab === 'profile' && <UserProfile user={{ id: 'u_1', full_name: 'John Doe', email: 'john@digitalemployee.me', role: userRole, workspace: 'Workforce HQ' }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}
+                {activeTab === 'profile' && <UserProfile user={{ id: session?.user?.id || 'u_1', full_name: session?.user?.email?.split('@')[0] || 'User', email: session?.user?.email || '', role: userRole, workspace: 'Workforce HQ' }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}
                 {activeTab === 'campaigns' && <CampaignList onCreate={() => setIsCampaignBuilderOpen(true)} />}
                 {activeTab === 'analytics' && <LeadAnalytics />}
                 {activeTab === 'schema' && <DatabaseSchema />}
@@ -397,6 +475,83 @@ const App: React.FC = () => {
       {isFormOpen && <LeadForm onClose={() => setIsFormOpen(false)} />}
       {isCampaignBuilderOpen && <CampaignBuilder onClose={() => setIsCampaignBuilderOpen(false)} onSave={() => setIsCampaignBuilderOpen(false)} />}
       {isPostComposerOpen && <PostComposer onClose={() => setIsPostComposerOpen(false)} onSave={() => setIsPostComposerOpen(false)} />}
+    </div>
+  );
+};
+
+const ResetPasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setSuccess(true);
+      setTimeout(() => {
+        onClose();
+        // Redirect to dashboard to ensure state refresh
+        window.location.href = '/';
+      }, 2500);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-white rounded-[3.5rem] shadow-2xl p-12 space-y-8 animate-in zoom-in-95 duration-300">
+        <div className="text-center space-y-4">
+          <div className="w-20 h-20 bg-indigo-50 rounded-[2.5rem] mx-auto flex items-center justify-center text-indigo-600 shadow-inner">
+            {success ? <CheckCircle2 size={40} className="text-emerald-600" /> : <RefreshCw size={40} className={loading ? 'animate-spin' : ''} />}
+          </div>
+          <h3 className="text-3xl font-black text-slate-900 uppercase tracking-tight">
+            {success ? 'CIPHER UPDATED' : 'SET NEW CIPHER'}
+          </h3>
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest italic leading-relaxed">
+            {success ? 'Identity protocol restored. Synchronizing workspace...' : 'Enter your new master password to secure the pulse.'}
+          </p>
+        </div>
+
+        {!success && (
+          <form onSubmit={handleUpdate} className="space-y-6">
+            {error && (
+              <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <AlertCircle size={18} className="text-rose-600 shrink-0" />
+                <p className="text-[10px] font-black text-rose-700 uppercase leading-relaxed">{error}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">NEW MASTER CIPHER</label>
+              <div className="relative">
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                <input 
+                  type="password" 
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-14 pr-8 py-5 bg-slate-50/50 border border-slate-100 rounded-3xl focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-200 outline-none transition-all shadow-inner font-bold text-sm" 
+                  placeholder="••••••••••••" 
+                />
+              </div>
+            </div>
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#5244E1] text-white py-6 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.25em] flex items-center justify-center gap-4 hover:bg-[#4338CA] shadow-xl disabled:opacity-50 transition-all active:scale-95"
+            >
+              {loading ? <Loader2 size={20} className="animate-spin" /> : 'RESTORE ACCESS'}
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 };

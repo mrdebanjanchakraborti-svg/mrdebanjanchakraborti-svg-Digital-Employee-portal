@@ -66,6 +66,13 @@ export enum TransactionType {
   DEBIT = 'debit'
 }
 
+export enum ExecutionStatus {
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  BLOCKED = 'blocked',
+  RETRYING = 'retrying'
+}
+
 export interface WalletTransaction {
   id: string;
   type: TransactionType;
@@ -203,6 +210,41 @@ export enum RetryPolicy {
   EXPONENTIAL = 'exponential'
 }
 
+export interface Agent {
+  id: string;
+  name: string;
+  workload: number; // current active leads
+  base_city: string;
+  avatar_color: string;
+}
+
+export interface KanbanLead {
+  id: string;
+  name: string;
+  company: string;
+  score: number;
+  grade: LeadGrade;
+  priority: 'High' | 'Medium' | 'Low';
+  temperature: LeadTemperature;
+  scenario?: string;
+  lastSignal?: string;
+  lastActive?: string;
+  interactionCount: number;
+  requiresImmediateFollowup?: boolean;
+  needsRescore?: boolean;
+  assigned_to?: string; // agent_id
+  assigned_agent_name?: string;
+  metadata?: {
+    city?: string;
+  };
+  bant: {
+    need: boolean;
+    authority: boolean;
+    budget: boolean;
+    timeline: string;
+  };
+}
+
 export interface Trigger {
   id: string;
   workspace_id: string;
@@ -231,11 +273,12 @@ export interface OutgoingTrigger {
   created_at: string;
 }
 
-export interface Execution {
+export interface WorkflowExecution {
   id: string;
   trigger_id: string;
-  status: 'success' | 'failed';
-  credit_cost: number;
+  workflow_id: string;
+  credits_used: number;
+  status: ExecutionStatus;
   payload_preview: string;
   error_log?: string;
   created_at: string;
