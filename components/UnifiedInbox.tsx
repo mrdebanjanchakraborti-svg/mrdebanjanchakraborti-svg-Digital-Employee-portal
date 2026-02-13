@@ -9,7 +9,8 @@ import {
   HeartPulse, UserPlus, Paperclip, SmilePlus, CheckCircle2, UserCheck, Smartphone, Settings2, Hash,
   Edit3, ArrowRight, MessageSquare, Brain, FileText, Upload
 } from 'lucide-react';
-import { ConversationChannel, ConversationStatus, SenderType, NormalizedMessage, Conversation, LeadStatus } from '../types';
+// Fix: Removed non-existent SenderType member from types import
+import { ConversationChannel, ConversationStatus, NormalizedMessage, Conversation, LeadStatus } from '../types';
 import { generateReplySuggestions } from '../services/geminiService';
 
 const MOCK_CONVERSATIONS: Conversation[] = [

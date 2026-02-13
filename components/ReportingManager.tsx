@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   BarChart3, PieChart, TrendingUp, Users, 
@@ -7,7 +8,8 @@ import {
   UserCheck, Shield, Target, Smartphone,
   CheckCircle2, AlertCircle, RefreshCw, Loader2, FileText, Globe
 } from 'lucide-react';
-import { UserRole, PayoutStatus } from '../types';
+// Fix: Removed non-existent PayoutStatus member from types import
+import { UserRole } from '../types';
 
 interface ReportingManagerProps {
   initialRole?: UserRole;
