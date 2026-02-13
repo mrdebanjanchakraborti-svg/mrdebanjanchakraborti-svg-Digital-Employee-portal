@@ -53,6 +53,7 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
   const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean | null>(null);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   
   // Persistent Workspace Settings
   const [workspaceInfo, setWorkspaceInfo] = useState({
@@ -70,12 +71,10 @@ const App: React.FC = () => {
     expiresAt: '2024-12-30'
   });
 
-  const [orders, setOrders] = useState<SubscriptionOrder[]>([]);
-
   // IDENTITY SYNCHRONIZATION PULSE
+  // This is the source of truth for the entire application state.
   const syncIdentityState = async (userId: string) => {
     try {
-      // 1. Fetch Workspace (Including WhatsApp & Voice)
       const { data: workspace, error: wsError } = await supabase
         .from('workspaces')
         .select('*')
@@ -85,7 +84,13 @@ const App: React.FC = () => {
       if (wsError) throw wsError;
 
       if (workspace) {
-        setIsOnboardingComplete(workspace.onboarding_completed);
+        setActiveWorkspaceId(workspace.id);
+        
+        // Critical Persistence Fix: Deriving local state strictly from DB
+        if (workspace.onboarding_completed) {
+          setIsOnboardingComplete(true);
+        }
+
         setWorkspaceInfo({
           company: workspace.company_name,
           sector: workspace.industry_sector,
@@ -93,7 +98,6 @@ const App: React.FC = () => {
           voice: workspace.preferred_voice
         });
         
-        // 2. Fetch Subscription & Credits
         const { data: sub, error: subError } = await supabase
           .from('subscriptions')
           .select('*')
@@ -103,16 +107,21 @@ const App: React.FC = () => {
         if (subError) throw subError;
 
         if (sub) {
+          // ENSURE ACCESS IS UNLOCKED ON LOGIN
           setIsActivated(true);
           setSubscription({
             tier: sub.plan_tier as PlanTier,
-            status: SubscriptionStatus.ACTIVE,
+            status: sub.status as SubscriptionStatus,
             overdue: sub.overdue || false,
             credits: sub.credits_balance,
             expiresAt: sub.expires_at ? sub.expires_at.split('T')[0] : '2024-12-30'
           });
+        } else {
+          // If workspace exists but no sub record (should be rare due to DB trigger)
+          setIsActivated(false);
         }
       } else {
+        // No workspace found, user must onboard
         setIsOnboardingComplete(false);
         setIsActivated(false);
       }
@@ -121,46 +130,36 @@ const App: React.FC = () => {
     }
   };
 
-  // Auth Initialization & Listener
   useEffect(() => {
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setIsAuthenticated(!!session);
-        
-        if (session?.user) {
-          await syncIdentityState(session.user.id);
-        }
+        if (session?.user) await syncIdentityState(session.user.id);
       } catch (err) {
         console.error("Auth session fetch failure:", err);
       } finally {
         setIsAuthChecking(false);
       }
     };
-
     initAuth();
 
     const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setIsAuthenticated(!!session);
-      
-      if (event === 'PASSWORD_RECOVERY') {
-        setShowResetPasswordModal(true);
-      }
-      
+      if (event === 'PASSWORD_RECOVERY') setShowResetPasswordModal(true);
       if (session?.user) {
         await syncIdentityState(session.user.id);
       } else {
         setIsActivated(false);
         setIsOnboardingComplete(false);
+        setActiveWorkspaceId(null);
       }
     });
-
     return () => authListener.unsubscribe();
   }, []);
 
-  // Check Supabase connection health
   useEffect(() => {
     const checkConn = async () => {
       const online = await checkSupabaseConnection();
@@ -178,25 +177,83 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
   };
 
+  const handleActivation = async (tier: PlanTier) => {
+    if (!session?.user || !activeWorkspaceId) {
+       console.warn("Handshake Blocked: Session or Workspace ID missing.");
+       return;
+    }
+    
+    try {
+      const tierCredits: Record<PlanTier, number> = {
+        [PlanTier.FREE]: 200, [PlanTier.STARTER]: 1500, [PlanTier.GROWTH]: 6000, [PlanTier.PRO]: 15000, [PlanTier.ENTERPRISE]: 40500
+      };
+      
+      const { error } = await supabase.from('subscriptions').upsert({ 
+        workspace_id: activeWorkspaceId, 
+        plan_tier: tier, 
+        credits_balance: tierCredits[tier], 
+        status: 'active', 
+        overdue: false, 
+        updated_at: new Date().toISOString() 
+      });
+      
+      if (error) throw error;
+      
+      // IMMEDIATE ACCESS PULSE
+      setIsActivated(true);
+      setSubscription(prev => ({
+        ...prev,
+        tier: tier,
+        status: SubscriptionStatus.ACTIVE,
+        credits: tierCredits[tier]
+      }));
+      
+      await syncIdentityState(session.user.id);
+      setActiveTab('dashboard'); 
+    } catch (err) {
+      console.error("Plan Deployment Failure:", err);
+      alert("Failed to deploy workforce plan to cloud ledger. Please retry authorization.");
+    }
+  };
+
+  const handleRecharge = async (creditsToAdd: number) => {
+    if (!activeWorkspaceId) return;
+    try {
+      const { data: currentSub } = await supabase.from('subscriptions').select('credits_balance').eq('workspace_id', activeWorkspaceId).single();
+      const newBalance = (currentSub?.credits_balance || 0) + creditsToAdd;
+      const { error } = await supabase.from('subscriptions').update({ credits_balance: newBalance, updated_at: new Date().toISOString() }).eq('workspace_id', activeWorkspaceId);
+      if (error) throw error;
+      if (session?.user) await syncIdentityState(session.user.id);
+    } catch (err) {
+      console.error("Ledger Injection Failure:", err);
+    }
+  };
+
   if (isAuthChecking) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#05070A] text-white">
-        <Loader2 className="animate-spin text-[#5143E1] mb-4" size={48} />
-        <p className="text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">Initializing Identity Handshake</p>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#05070A] text-white p-6">
+        <div className="border-2 border-[#3B82F6] p-16 md:p-24 flex flex-col items-center justify-center gap-12 min-w-[340px] md:min-w-[600px] animate-in fade-in zoom-in duration-1000 shadow-[0_0_100px_rgba(59,130,246,0.15)]">
+          <div className="relative">
+             <div className="w-16 h-16 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin shadow-[0_0_30px_rgba(79,70,229,0.4)]" />
+          </div>
+          <p className="text-[12px] font-black uppercase tracking-[0.6em] animate-pulse text-white whitespace-nowrap text-center drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+            INITIALIZING IDENTITY HANDSHAKE
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
-  }
+  if (!isAuthenticated) return <Login onLogin={() => setIsAuthenticated(true)} />;
 
   if (!isOnboardingComplete) {
     return <OnboardingFlow onComplete={async () => {
+      // Critical Fix: Sync state after onboarding to populate activeWorkspaceId
       if (session?.user) {
         await syncIdentityState(session.user.id);
+        setIsOnboardingComplete(true);
+        setActiveTab('billing'); 
       }
-      setActiveTab('dashboard');
     }} />;
   }
 
@@ -211,6 +268,7 @@ const App: React.FC = () => {
       { id: 'voice', name: 'Voice AI', icon: PhoneCall },
     ]},
     { section: 'Growth', items: [
+      { id: 'leads', name: 'Sales Kanban', icon: Users },
       { id: 'campaigns', name: 'AI Campaigns', icon: Megaphone },
       { id: 'social', name: 'Social Planner', icon: Share2 },
       { id: 'creative', name: 'Content Engine', icon: Sparkles },
@@ -239,16 +297,12 @@ const App: React.FC = () => {
   ];
 
   const handleTabChange = (id: string) => {
-    if (!isActivated && id !== 'billing' && id !== 'ledger' && id !== 'dashboard') {
-      alert("Authorization Required: Please activate your workforce plan in the Billing Hub.");
+    // Basic access rules: Dashboard, Billing, Profile, and Schema are always open for authenticated users
+    if (!isActivated && id !== 'billing' && id !== 'dashboard' && id !== 'profile' && id !== 'schema') {
+      alert("Authorization Required: Please activate your workforce plan in the Billing Hub to unlock this protocol.");
       return;
     }
     setActiveTab(id);
-  };
-
-  const handleActivation = async (tier: PlanTier) => {
-    if (!session?.user) return;
-    await syncIdentityState(session.user.id);
   };
 
   return (
@@ -258,8 +312,8 @@ const App: React.FC = () => {
       {!isActivated ? (
         <div className="absolute top-0 left-0 right-0 h-[60px] bg-[#5143E1] text-white z-[100] flex items-center justify-center gap-6 px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
            <Rocket size={20} className="animate-bounce" />
-           <p className="text-[12px] font-black uppercase tracking-[0.25em]">Running on Free Pulse – Deployment restricted until activation</p>
-           <button onClick={() => setActiveTab('billing')} className="bg-white text-[#5143E1] px-6 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg">Activate Now</button>
+           <p className="text-[12px] font-black uppercase tracking-[0.25em]">Deployment Pending – Subscription required to authorize Pulse</p>
+           <button onClick={() => setActiveTab('billing')} className="bg-white text-[#5143E1] px-6 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-lg">Activate Workforce</button>
         </div>
       ) : subscription.overdue ? (
         <div className="absolute top-0 left-0 right-0 h-[60px] bg-red-600 text-white z-[100] flex items-center justify-between px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
@@ -356,9 +410,9 @@ const App: React.FC = () => {
                 {activeTab === 'workflows' && <WorkflowEngine />}
                 {activeTab === 'reviews' && <ReviewManager />}
                 {activeTab === 'automation-hub' && <AutomationHub />}
-                {activeTab === 'billing' && <BillingManager onActivate={handleActivation} globalBalance={subscription.credits} />}
+                {activeTab === 'billing' && <BillingManager onActivate={handleActivation} onRecharge={handleRecharge} globalBalance={subscription.credits} />}
                 {activeTab === 'ledger' && <WalletLedger balance={subscription.credits} />}
-                {activeTab === 'subscription-ledger' && <SubscriptionLedger externalOrders={orders} />}
+                {activeTab === 'subscription-ledger' && <SubscriptionLedger />}
                 {activeTab === 'reporting' && <ReportingManager />}
                 {activeTab === 'partner' && <PartnerHub />}
                 {activeTab === 'profile' && <UserProfile user={{ id: session?.user?.id || 'u_1', full_name: session?.user?.email?.split('@')[0] || 'User', email: session?.user?.email || '', role: userRole, workspace: workspaceInfo.company }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}

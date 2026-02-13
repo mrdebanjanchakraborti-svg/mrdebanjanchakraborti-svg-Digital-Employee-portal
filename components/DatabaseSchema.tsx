@@ -5,15 +5,17 @@ import { Copy, CheckCircle, Shield, Code, Zap, Terminal, ShieldCheck, AlertTrian
 const DatabaseSchema: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlCode = `-- DIGITAL EMPLOYEE INFRASTRUCTURE (v6.0)
--- 🛠 MANDATORY: RUN IN "PUBLIC" SCHEMA ONLY
--- ⚠️ WARNING: DO NOT USE THE "REALTIME" SCHEMA FOR APP DATA.
+  const sqlCode = `-- DIGITAL EMPLOYEE INFRASTRUCTURE (v9.0)
+-- 🛠 SECURE WORKSPACE & IDENTITY PROTOCOL
 
 -- 1️⃣ IDENTITY LAYER (Profiles)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
+  role TEXT DEFAULT 'member',
   avatar_url TEXT,
+  logo_url TEXT,
+  preferred_voice TEXT DEFAULT 'Zephyr',
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -31,7 +33,6 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
 );
 
 -- 3️⃣ SUBSCRIPTION & LEDGER (The Pulse)
--- This table receives data via the trigger below
 CREATE TABLE IF NOT EXISTS public.subscriptions (
   workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE PRIMARY KEY,
   plan_tier TEXT DEFAULT 'free',
@@ -47,13 +48,21 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users manage own profile" ON public.profiles FOR ALL USING (auth.uid() = id);
-CREATE POLICY "Owners manage workspaces" ON public.workspaces FOR ALL USING (auth.uid() = owner_id);
-CREATE POLICY "Owners view subscriptions" ON public.subscriptions FOR SELECT 
-USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+-- Governance: Users manage their own records
+DROP POLICY IF EXISTS "Owners manage workspaces" ON public.workspaces;
+CREATE POLICY "Owners manage workspaces" ON public.workspaces 
+FOR ALL USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Users manage own profile" ON public.profiles;
+CREATE POLICY "Users manage own profile" ON public.profiles 
+FOR ALL USING (auth.uid() = id);
+
+-- CRITICAL FIX: Allow users to UPSERT subscriptions during activation
+DROP POLICY IF EXISTS "Owners manage subscriptions" ON public.subscriptions;
+CREATE POLICY "Owners manage subscriptions" ON public.subscriptions 
+FOR ALL USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
 
 -- 5️⃣ AUTOMATION: AUTO-INIT SUBSCRIPTION
--- This function runs every time a workspace is created
 CREATE OR REPLACE FUNCTION public.init_workspace_essentials()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -85,10 +94,10 @@ CREATE TRIGGER on_workspace_created
               <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl">
                 <ShieldCheck size={28} className="text-white" />
               </div>
-              <h2 className="text-4xl font-black tracking-tight uppercase">Master Ledger v6.0</h2>
+              <h2 className="text-4xl font-black tracking-tight uppercase">Master Ledger v9.0</h2>
             </div>
             <p className="text-slate-400 text-lg max-w-2xl leading-relaxed font-medium italic">
-              Corrected schema: targets **public** schema. Re-run this to fix naming conflicts.
+              Strict Infrastructure: Includes **Subscription Management RLS** for plan activation.
             </p>
           </div>
           <button 
@@ -102,26 +111,11 @@ CREATE TRIGGER on_workspace_created
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px] -mr-40 -mt-40" />
       </div>
 
-      {/* Warning Box */}
-      <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-8 flex gap-6 items-center shadow-sm">
-         <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl">
-            <AlertTriangle size={32} />
-         </div>
-         <div>
-            <h4 className="text-lg font-black text-amber-900 uppercase">Schema Conflict Detected</h4>
-            <p className="text-amber-800 text-sm font-medium leading-relaxed">
-               Supabase uses the <code className="bg-amber-200 px-1.5 py-0.5 rounded font-bold">realtime</code> schema for its internal system. 
-               Ensure your data is stored in the <code className="bg-amber-200 px-1.5 py-0.5 rounded font-bold">public</code> schema. 
-               The app is looking for <code className="bg-amber-200 px-1.5 py-0.5 rounded font-bold">public.subscriptions</code>.
-            </p>
-         </div>
-      </div>
-
       <div className="bg-white border border-slate-200 rounded-[3rem] overflow-hidden shadow-sm flex flex-col">
         <div className="px-10 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <div className="flex items-center gap-4">
             <Terminal size={18} className="text-slate-400" />
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Public Protocol v6.0</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Protocol v9.0</span>
           </div>
         </div>
         <div className="p-0 bg-slate-950 overflow-hidden relative">

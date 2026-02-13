@@ -100,6 +100,7 @@ export interface Profile {
   role: UserRole;
   avatar_url?: string;
   logo_url?: string;
+  preferred_voice?: string;
   plan_tier: PlanTier;
   subscription_status: SubscriptionStatus;
   created_at: string;
@@ -107,8 +108,11 @@ export interface Profile {
 
 export interface Workspace {
   id: string;
-  name: string;
+  company_name: string;
   owner_id: string;
+  industry_sector?: string;
+  whatsapp_number?: string;
+  preferred_voice?: string;
   onboarding_completed: boolean;
   created_at: string;
 }
@@ -182,6 +186,13 @@ export enum ConversationStatus {
   PENDING = 'pending'
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  due_date: string;
+  completed: boolean;
+}
+
 export interface KanbanLead {
   id: string;
   name: string;
@@ -207,6 +218,7 @@ export interface KanbanLead {
     budget: boolean;
     timeline: string;
   };
+  tasks?: Task[];
 }
 
 export enum StorageType {
