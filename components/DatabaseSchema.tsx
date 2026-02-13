@@ -5,10 +5,10 @@ import { Copy, CheckCircle, Shield, Code, Zap, Terminal, ShieldCheck, AlertTrian
 const DatabaseSchema: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlCode = `-- DIGITAL EMPLOYEE INFRASTRUCTURE (v9.0)
--- 🛠 SECURE WORKSPACE & IDENTITY PROTOCOL
+  const sqlCode = `-- DIGITAL EMPLOYEE INFRASTRUCTURE (v12.0)
+-- 🛠 FINAL MASTER LEDGER: SIGNUP, SUBSCRIPTIONS, WALLET & LEADS
 
--- 1️⃣ IDENTITY LAYER (Profiles)
+-- 1️⃣ USER IDENTITY LAYER
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2️⃣ WORKSPACE REGISTRY (The Business Entity)
+-- 2️⃣ WORKSPACE REGISTRY (The Business Unit)
 CREATE TABLE IF NOT EXISTS public.workspaces (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3️⃣ SUBSCRIPTION & LEDGER (The Pulse)
+-- 3️⃣ SUBSCRIPTION GATEKEEPER (Platform Access State)
 CREATE TABLE IF NOT EXISTS public.subscriptions (
   workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE PRIMARY KEY,
   plan_tier TEXT DEFAULT 'free',
@@ -43,32 +43,88 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 4️⃣ RLS GOVERNANCE (Security)
+-- 4️⃣ FINANCIAL AUDIT: SUBSCRIPTION TRANSACTIONS
+CREATE TABLE IF NOT EXISTS public.subscription_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE NOT NULL,
+  razorpay_payment_id TEXT UNIQUE,
+  razorpay_order_id TEXT,
+  amount DECIMAL(10,2) NOT NULL,
+  plan_tier TEXT NOT NULL,
+  status TEXT DEFAULT 'success',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5️⃣ FINANCIAL AUDIT: WALLET & CREDIT LEDGER
+CREATE TABLE IF NOT EXISTS public.wallet_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE NOT NULL,
+  type TEXT CHECK (type IN ('credit', 'debit')),
+  amount INT NOT NULL,
+  purpose TEXT,
+  reference_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6️⃣ SALES INTELLIGENCE: LEADS REPOSITORY
+CREATE TABLE IF NOT EXISTS public.leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES public.workspaces(id) ON DELETE CASCADE NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  email TEXT,
+  company TEXT,
+  score INT DEFAULT 0,
+  status TEXT DEFAULT 'new',
+  temperature TEXT DEFAULT 'cold',
+  grade TEXT DEFAULT 'cold',
+  bant_need BOOLEAN DEFAULT false,
+  bant_authority BOOLEAN DEFAULT false,
+  bant_budget BOOLEAN DEFAULT false,
+  bant_timeline TEXT,
+  last_active TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7️⃣ RLS GOVERNANCE (Multi-Tenant Isolation)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subscription_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 
--- Governance: Users manage their own records
-DROP POLICY IF EXISTS "Owners manage workspaces" ON public.workspaces;
-CREATE POLICY "Owners manage workspaces" ON public.workspaces 
-FOR ALL USING (auth.uid() = owner_id);
+-- Governance Policies: Restrict access to Auth User ID
+CREATE POLICY "Users manage own profile" ON public.profiles FOR ALL USING (auth.uid() = id);
+CREATE POLICY "Owners manage workspaces" ON public.workspaces FOR ALL USING (auth.uid() = owner_id);
 
-DROP POLICY IF EXISTS "Users manage own profile" ON public.profiles;
-CREATE POLICY "Users manage own profile" ON public.profiles 
-FOR ALL USING (auth.uid() = id);
-
--- CRITICAL FIX: Allow users to UPSERT subscriptions during activation
-DROP POLICY IF EXISTS "Owners manage subscriptions" ON public.subscriptions;
-CREATE POLICY "Owners manage subscriptions" ON public.subscriptions 
+-- Workspace Sub-data Policies (Isolated by Workspace Ownership)
+CREATE POLICY "Subscription Isolation" ON public.subscriptions 
 FOR ALL USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
 
--- 5️⃣ AUTOMATION: AUTO-INIT SUBSCRIPTION
-CREATE OR REPLACE FUNCTION public.init_workspace_essentials()
+CREATE POLICY "Sub-Transaction Isolation" ON public.subscription_transactions 
+FOR ALL USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+CREATE POLICY "Wallet-Transaction Isolation" ON public.wallet_transactions 
+FOR ALL USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+CREATE POLICY "Leads Isolation" ON public.leads 
+FOR ALL USING (workspace_id IN (SELECT id FROM public.workspaces WHERE owner_id = auth.uid()));
+
+-- 8️⃣ AUTOMATION: AUTO-INITIALIZE SUBSCRIPTION PULSE
+CREATE OR REPLACE FUNCTION public.onboard_new_workspace()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.subscriptions (workspace_id, plan_tier, credits_balance)
-  VALUES (NEW.id, 'free', 200)
+  -- 1. Create default Free Subscription record
+  INSERT INTO public.subscriptions (workspace_id, plan_tier, credits_balance, status)
+  VALUES (NEW.id, 'free', 200, 'active')
   ON CONFLICT (workspace_id) DO NOTHING;
+  
+  -- 2. Log initial credit gift in wallet ledger
+  INSERT INTO public.wallet_transactions (workspace_id, type, amount, purpose)
+  VALUES (NEW.id, 'credit', 200, 'Onboarding Welcome Fuel');
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -76,7 +132,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP TRIGGER IF EXISTS on_workspace_created ON public.workspaces;
 CREATE TRIGGER on_workspace_created
   AFTER INSERT ON public.workspaces
-  FOR EACH ROW EXECUTE FUNCTION public.init_workspace_essentials();
+  FOR EACH ROW EXECUTE FUNCTION public.onboard_new_workspace();
 `;
 
   const handleCopy = () => {
@@ -94,10 +150,10 @@ CREATE TRIGGER on_workspace_created
               <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl">
                 <ShieldCheck size={28} className="text-white" />
               </div>
-              <h2 className="text-4xl font-black tracking-tight uppercase">Master Ledger v9.0</h2>
+              <h2 className="text-4xl font-black tracking-tight uppercase">Master Ledger v12.0</h2>
             </div>
             <p className="text-slate-400 text-lg max-w-2xl leading-relaxed font-medium italic">
-              Strict Infrastructure: Includes **Subscription Management RLS** for plan activation.
+              Comprehensive Schema for **Identity, Subscription Logic, Financial Handshakes**, and **Sales Intelligence**.
             </p>
           </div>
           <button 
@@ -105,7 +161,7 @@ CREATE TRIGGER on_workspace_created
             className="shrink-0 flex items-center justify-center gap-3 px-8 py-5 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-500/20 active:scale-95 group"
           >
             {copied ? <CheckCircle size={24} /> : <Code size={24} className="group-hover:rotate-12 transition-transform" />}
-            {copied ? 'Copied Blueprint' : 'Fetch Final SQL'}
+            {copied ? 'Copied Blueprint' : 'Fetch Master SQL'}
           </button>
         </div>
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px] -mr-40 -mt-40" />
@@ -115,7 +171,7 @@ CREATE TRIGGER on_workspace_created
         <div className="px-10 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <div className="flex items-center gap-4">
             <Terminal size={18} className="text-slate-400" />
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Protocol v9.0</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Persistence Protocol v12.0</span>
           </div>
         </div>
         <div className="p-0 bg-slate-950 overflow-hidden relative">

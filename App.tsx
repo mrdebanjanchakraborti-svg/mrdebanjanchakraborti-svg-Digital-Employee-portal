@@ -37,7 +37,7 @@ import TriggerManager from './components/TriggerManager';
 import OutgoingTriggerManager from './components/OutgoingTriggerManager';
 import WalletLedger from './components/WalletLedger';
 import SubscriptionLedger from './components/SubscriptionLedger';
-import { UserRole, PlanTier, SubscriptionStatus, SubscriptionOrder } from './types';
+import { UserRole, PlanTier, SubscriptionStatus } from './types';
 import { supabase, checkSupabaseConnection } from './supabase';
 
 const App: React.FC = () => {
@@ -50,12 +50,8 @@ const App: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCampaignBuilderOpen, setIsCampaignBuilderOpen] = useState(false);
   const [isPostComposerOpen, setIsPostComposerOpen] = useState(false);
-  const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
-  const [isSupabaseOnline, setIsSupabaseOnline] = useState<boolean | null>(null);
-  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   
-  // Persistent Workspace Settings
   const [workspaceInfo, setWorkspaceInfo] = useState({
     company: '',
     sector: '',
@@ -72,9 +68,10 @@ const App: React.FC = () => {
   });
 
   // IDENTITY SYNCHRONIZATION PULSE
-  // This is the source of truth for the entire application state.
+  // Derives state strictly from the Master Ledger (Supabase)
   const syncIdentityState = async (userId: string) => {
     try {
+      // 1. Fetch Workspace (Onboarding State)
       const { data: workspace, error: wsError } = await supabase
         .from('workspaces')
         .select('*')
@@ -85,12 +82,8 @@ const App: React.FC = () => {
 
       if (workspace) {
         setActiveWorkspaceId(workspace.id);
+        setIsOnboardingComplete(!!workspace.onboarding_completed);
         
-        // Critical Persistence Fix: Deriving local state strictly from DB
-        if (workspace.onboarding_completed) {
-          setIsOnboardingComplete(true);
-        }
-
         setWorkspaceInfo({
           company: workspace.company_name,
           sector: workspace.industry_sector,
@@ -98,6 +91,7 @@ const App: React.FC = () => {
           voice: workspace.preferred_voice
         });
         
+        // 2. Fetch Subscription (Activation State)
         const { data: sub, error: subError } = await supabase
           .from('subscriptions')
           .select('*')
@@ -107,7 +101,6 @@ const App: React.FC = () => {
         if (subError) throw subError;
 
         if (sub) {
-          // ENSURE ACCESS IS UNLOCKED ON LOGIN
           setIsActivated(true);
           setSubscription({
             tier: sub.plan_tier as PlanTier,
@@ -117,16 +110,17 @@ const App: React.FC = () => {
             expiresAt: sub.expires_at ? sub.expires_at.split('T')[0] : '2024-12-30'
           });
         } else {
-          // If workspace exists but no sub record (should be rare due to DB trigger)
+          // Workspace exists but activation is pending (new user awaiting manual handshake)
           setIsActivated(false);
         }
       } else {
-        // No workspace found, user must onboard
+        // No workspace found - user must complete onboarding
         setIsOnboardingComplete(false);
         setIsActivated(false);
+        setActiveWorkspaceId(null);
       }
     } catch (err) {
-      console.error("Identity Sync Protocol Failed:", err);
+      console.error("Identity Sync Failure:", err);
     }
   };
 
@@ -138,9 +132,9 @@ const App: React.FC = () => {
         setIsAuthenticated(!!session);
         if (session?.user) await syncIdentityState(session.user.id);
       } catch (err) {
-        console.error("Auth session fetch failure:", err);
+        console.error("Auth Handshake Interrupted:", err);
       } finally {
-        setIsAuthChecking(false);
+        setTimeout(() => setIsAuthChecking(false), 1200);
       }
     };
     initAuth();
@@ -148,7 +142,6 @@ const App: React.FC = () => {
     const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setIsAuthenticated(!!session);
-      if (event === 'PASSWORD_RECOVERY') setShowResetPasswordModal(true);
       if (session?.user) {
         await syncIdentityState(session.user.id);
       } else {
@@ -158,14 +151,6 @@ const App: React.FC = () => {
       }
     });
     return () => authListener.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const checkConn = async () => {
-      const online = await checkSupabaseConnection();
-      setIsSupabaseOnline(online);
-    };
-    checkConn();
   }, []);
 
   const isExpired = useMemo(() => {
@@ -179,8 +164,8 @@ const App: React.FC = () => {
 
   const handleActivation = async (tier: PlanTier) => {
     if (!session?.user || !activeWorkspaceId) {
-       console.warn("Handshake Blocked: Session or Workspace ID missing.");
-       return;
+      console.error("Atomic Activation Aborted: Workspace ID missing.");
+      return;
     }
     
     try {
@@ -188,7 +173,12 @@ const App: React.FC = () => {
         [PlanTier.FREE]: 200, [PlanTier.STARTER]: 1500, [PlanTier.GROWTH]: 6000, [PlanTier.PRO]: 15000, [PlanTier.ENTERPRISE]: 40500
       };
       
-      const { error } = await supabase.from('subscriptions').upsert({ 
+      const tierPrices: Record<PlanTier, number> = {
+        [PlanTier.FREE]: 0, [PlanTier.STARTER]: 2500, [PlanTier.GROWTH]: 6500, [PlanTier.PRO]: 15000, [PlanTier.ENTERPRISE]: 35500
+      };
+
+      // 1. UPDATE SUBSCRIPTION STATE
+      const { error: subErr } = await supabase.from('subscriptions').upsert({ 
         workspace_id: activeWorkspaceId, 
         plan_tier: tier, 
         credits_balance: tierCredits[tier], 
@@ -196,10 +186,18 @@ const App: React.FC = () => {
         overdue: false, 
         updated_at: new Date().toISOString() 
       });
+      if (subErr) throw subErr;
+
+      // 2. LOG FINANCIAL AUDIT RECORD
+      await supabase.from('subscription_transactions').insert({
+        workspace_id: activeWorkspaceId,
+        plan_tier: tier,
+        amount: tierPrices[tier],
+        razorpay_payment_id: 'internal_handshake_' + Date.now(),
+        status: 'success'
+      });
       
-      if (error) throw error;
-      
-      // IMMEDIATE ACCESS PULSE
+      // 3. OPTIMISTIC UI FEEDBACK
       setIsActivated(true);
       setSubscription(prev => ({
         ...prev,
@@ -211,8 +209,8 @@ const App: React.FC = () => {
       await syncIdentityState(session.user.id);
       setActiveTab('dashboard'); 
     } catch (err) {
-      console.error("Plan Deployment Failure:", err);
-      alert("Failed to deploy workforce plan to cloud ledger. Please retry authorization.");
+      console.error("Ledger Update Failure:", err);
+      alert("Platform Activation Interrupted. Please retry financial handshake.");
     }
   };
 
@@ -221,11 +219,25 @@ const App: React.FC = () => {
     try {
       const { data: currentSub } = await supabase.from('subscriptions').select('credits_balance').eq('workspace_id', activeWorkspaceId).single();
       const newBalance = (currentSub?.credits_balance || 0) + creditsToAdd;
-      const { error } = await supabase.from('subscriptions').update({ credits_balance: newBalance, updated_at: new Date().toISOString() }).eq('workspace_id', activeWorkspaceId);
-      if (error) throw error;
+      
+      // 1. UPDATE BALANCE
+      const { error: updErr } = await supabase.from('subscriptions').update({ 
+        credits_balance: newBalance, 
+        updated_at: new Date().toISOString() 
+      }).eq('workspace_id', activeWorkspaceId);
+      if (updErr) throw updErr;
+
+      // 2. LOG WALLET TRANSACTION
+      await supabase.from('wallet_transactions').insert({
+        workspace_id: activeWorkspaceId,
+        type: 'credit',
+        amount: creditsToAdd,
+        purpose: 'Manual Fuel Injection'
+      });
+
       if (session?.user) await syncIdentityState(session.user.id);
     } catch (err) {
-      console.error("Ledger Injection Failure:", err);
+      console.error("Wallet Ledger Injection Failure:", err);
     }
   };
 
@@ -248,7 +260,6 @@ const App: React.FC = () => {
 
   if (!isOnboardingComplete) {
     return <OnboardingFlow onComplete={async () => {
-      // Critical Fix: Sync state after onboarding to populate activeWorkspaceId
       if (session?.user) {
         await syncIdentityState(session.user.id);
         setIsOnboardingComplete(true);
@@ -259,11 +270,11 @@ const App: React.FC = () => {
 
   const navigation = [
     { section: 'Executive', items: [
-      { id: 'ceo-cockpit', name: 'CEO Cockpit', icon: Crown, role: UserRole.ADMIN },
-      { id: 'dashboard', name: 'Revenue Overview', icon: Layout, isCore: true },
+      { id: 'ceo-cockpit', name: 'CEO Cockpit', icon: Crown },
+      { id: 'dashboard', name: 'Revenue Overview', icon: Layout },
     ]},
     { section: 'Intelligence', items: [
-      { id: 'inbox', name: 'Unified Inbox', icon: MessageSquare, badge: 3 },
+      { id: 'inbox', name: 'Unified Inbox', icon: MessageSquare },
       { id: 'objections', name: 'Objection Library', icon: AlertCircle },
       { id: 'voice', name: 'Voice AI', icon: PhoneCall },
     ]},
@@ -278,9 +289,9 @@ const App: React.FC = () => {
     { section: 'Financials', items: [
       { id: 'reporting', name: 'Integrity Reporting', icon: PieChart },
       { id: 'partner', name: 'Partner Hub', icon: Award },
-      { id: 'billing', name: 'Billing & Credits', icon: DollarSign, isCore: true },
-      { id: 'ledger', name: 'Wallet Ledger', icon: Wallet, isCore: true },
-      { id: 'subscription-ledger', name: 'Subscription Audit', icon: Receipt, isCore: true },
+      { id: 'billing', name: 'Billing & Credits', icon: DollarSign },
+      { id: 'ledger', name: 'Wallet Ledger', icon: Wallet },
+      { id: 'subscription-ledger', name: 'Subscription Audit', icon: Receipt },
     ]},
     { section: 'Automation', items: [
       { id: 'triggers-in', name: 'Incoming Triggers', icon: Radio },
@@ -291,15 +302,14 @@ const App: React.FC = () => {
     ]},
     { section: 'Infrastructure', items: [
       { id: 'schema', name: 'Master Schema', icon: Shield },
-      { id: 'profile', name: 'My Pulse Profile', icon: UserCircle, isCore: true },
-      { id: 'settings', name: 'Settings', icon: Settings, isCore: true },
+      { id: 'profile', name: 'My Pulse Profile', icon: UserCircle },
+      { id: 'settings', name: 'Settings', icon: Settings },
     ]}
   ];
 
   const handleTabChange = (id: string) => {
-    // Basic access rules: Dashboard, Billing, Profile, and Schema are always open for authenticated users
     if (!isActivated && id !== 'billing' && id !== 'dashboard' && id !== 'profile' && id !== 'schema') {
-      alert("Authorization Required: Please activate your workforce plan in the Billing Hub to unlock this protocol.");
+      alert("Authorization Required: Please deploy your workforce plan in the Billing Hub to unlock this module.");
       return;
     }
     setActiveTab(id);
@@ -307,8 +317,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-white text-slate-900 font-sans relative overflow-hidden">
-      {showResetPasswordModal && <ResetPasswordModal onClose={() => setShowResetPasswordModal(false)} />}
-
       {!isActivated ? (
         <div className="absolute top-0 left-0 right-0 h-[60px] bg-[#5143E1] text-white z-[100] flex items-center justify-center gap-6 px-10 border-b border-white/10 shadow-2xl animate-in slide-in-from-top duration-500">
            <Rocket size={20} className="animate-bounce" />
@@ -360,13 +368,13 @@ const App: React.FC = () => {
           ))}
         </nav>
 
-        <div className="p-6 border-t border-slate-50 bg-slate-50/30 space-y-4">
+        <div className="p-6 border-t border-slate-50 bg-slate-50/30">
           <div className="flex items-center gap-3 px-4 py-4 bg-white border border-slate-100 rounded-3xl shadow-sm">
             <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-700 font-black border border-indigo-100 text-xs shadow-inner shrink-0">
                {session?.user?.email?.substring(0, 2).toUpperCase() || 'ID'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{workspaceInfo.company || 'Identity Handshake'}</p>
+              <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tight">{workspaceInfo.company || 'Autonomous Entity'}</p>
               <p className="text-[8px] font-black text-slate-400 truncate mt-0.5">{session?.user?.email}</p>
             </div>
             <button onClick={handleLogout} className="p-2 text-slate-300 hover:text-rose-500 rounded-xl transition-all">
@@ -391,7 +399,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-white custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="p-6 md:p-12 h-full">
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">
                 {activeTab === 'ceo-cockpit' && <AdminDashboard />}
@@ -415,7 +423,7 @@ const App: React.FC = () => {
                 {activeTab === 'subscription-ledger' && <SubscriptionLedger />}
                 {activeTab === 'reporting' && <ReportingManager />}
                 {activeTab === 'partner' && <PartnerHub />}
-                {activeTab === 'profile' && <UserProfile user={{ id: session?.user?.id || 'u_1', full_name: session?.user?.email?.split('@')[0] || 'User', email: session?.user?.email || '', role: userRole, workspace: workspaceInfo.company }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}
+                {activeTab === 'profile' && <UserProfile user={{ id: session?.user?.id || 'u_1', full_name: session?.user?.email?.split('@')[0] || 'User', email: session?.user?.email || '', role: UserRole.ADMIN, workspace: workspaceInfo.company }} wallet_balance={subscription.credits} subscription={{ plan: subscription.tier.toUpperCase(), status: subscription.status, expiry: subscription.expiresAt }} />}
                 {activeTab === 'campaigns' && <CampaignList onCreate={() => setIsCampaignBuilderOpen(true)} />}
                 {activeTab === 'analytics' && <LeadAnalytics />}
                 {activeTab === 'schema' && <DatabaseSchema />}
@@ -427,44 +435,6 @@ const App: React.FC = () => {
       {isFormOpen && <LeadForm onClose={() => setIsFormOpen(false)} />}
       {isCampaignBuilderOpen && <CampaignBuilder onClose={() => setIsCampaignBuilderOpen(false)} onSave={() => setIsCampaignBuilderOpen(false)} />}
       {isPostComposerOpen && <PostComposer onClose={() => setIsPostComposerOpen(false)} onSave={() => setIsPostComposerOpen(false)} />}
-    </div>
-  );
-};
-
-const ResetPasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      setSuccess(true);
-      setTimeout(onClose, 2000);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-      <div className="w-full max-w-md bg-white rounded-[3.5rem] shadow-2xl p-12 space-y-8 animate-in zoom-in-95 duration-300 text-center">
-        <h3 className="text-3xl font-black text-slate-900 uppercase">SET NEW CIPHER</h3>
-        {!success ? (
-          <form onSubmit={handleUpdate} className="space-y-6">
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl" placeholder="New Password" />
-            <button disabled={loading} className="w-full bg-[#5244E1] text-white py-6 rounded-[2rem] font-black uppercase">{loading ? 'Updating...' : 'Update Password'}</button>
-          </form>
-        ) : (
-          <p className="text-emerald-600 font-bold">Password restored.</p>
-        )}
-      </div>
     </div>
   );
 };
